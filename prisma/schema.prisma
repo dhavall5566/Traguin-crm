@@ -1,0 +1,468 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Multi-Tenant Agency Definition
+model Agency {
+  id                String             @id @default(uuid())
+  name              String
+  subdomain         String             @unique
+  logoUrl           String?
+  primaryColor      String             @default("#3b82f6")
+  secondaryColor    String             @default("#1e293b")
+  subscriptionPlan  String             @default("FREE") // FREE, GROWTH, ENTERPRISE
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  isDeleted         Boolean            @default(false) @map("is_deleted")
+
+  // Relationships
+  users             User[]
+  roles             Role[]
+  leads             Lead[]
+  customers         Customer[]
+  itineraries       Itinerary[]
+  vendors           Vendor[]
+  bookings          Booking[]
+  quotations        Quotation[]
+  invoices          Invoice[]
+  payments          Payment[]
+  expenses          Expense[]
+  vendorPayouts     VendorPayout[]
+  auditLogs         AuditLog[]
+
+  @@map("agencies")
+}
+
+// User Profile (Agency employee, admin, or vendor/customer link)
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  name              String
+  passwordHash      String?            @map("password_hash")
+  phone             String?
+  agencyId          String?            @map("agency_id")
+  agency            Agency?            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  isDeleted         Boolean            @default(false) @map("is_deleted")
+
+  // Relationships
+  assignedLeads     Lead[]             @relation("AssignedLeads")
+  createdNotes      LeadNote[]
+  createdActivities LeadActivity[]
+  createdFollowups  LeadFollowup[]
+  userRoles         UserRole[]
+  auditLogs         AuditLog[]
+
+  @@index([agencyId])
+  @@map("users")
+}
+
+// Role Definition for RBAC
+model Role {
+  id                String             @id @default(uuid())
+  name              String             // Super Admin, Agency Admin, Sales Agent, Operations, Finance, Vendor, Customer
+  agencyId          String?            @map("agency_id")
+  agency            Agency?            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  // Relationships
+  rolePermissions   RolePermission[]
+  userRoles         UserRole[]
+
+  @@unique([name, agencyId])
+  @@index([agencyId])
+  @@map("roles")
+}
+
+// Permission Definition
+model Permission {
+  id                String             @id @default(uuid())
+  name              String             // View, Create, Edit, Delete, Approve
+  module            String             // Dashboard, Leads, Itineraries, Customers, Finance, Vendors, Settings
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  // Relationships
+  rolePermissions   RolePermission[]
+
+  @@unique([name, module])
+  @@map("permissions")
+}
+
+// Role-Permission Join Table
+model RolePermission {
+  roleId            String             @map("role_id")
+  permissionId      String             @map("permission_id")
+  role              Role               @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission        Permission         @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// User-Role Join Table
+model UserRole {
+  userId            String             @map("user_id")
+  roleId            String             @map("role_id")
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role               @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+// Lead Management CRM
+model Lead {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  title             String             // e.g., "Kashmir Honeymoon Escape"
+  firstName         String             @map("first_name")
+  lastName          String             @map("last_name")
+  email             String?
+  phone             String?
+  status            String             @default("NEW") // NEW, CONTACTED, PROPOSAL_SENT, NEGOTIATION, CONFIRMED, LOST
+  value             Decimal            @default(0.00) @db.Decimal(12, 2)
+  source            String?            // website, referral, advertisement, whatsapp
+  assignedToId      String?            @map("assigned_to_id")
+  assignedTo        User?              @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  isDeleted         Boolean            @default(false) @map("is_deleted")
+
+  // Relationships
+  notes             LeadNote[]
+  activities        LeadActivity[]
+  followups         LeadFollowup[]
+
+  @@index([agencyId])
+  @@index([assignedToId])
+  @@map("leads")
+}
+
+model LeadNote {
+  id                String             @id @default(uuid())
+  leadId            String             @map("lead_id")
+  lead              Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content           String
+  createdById       String             @map("created_by_id")
+  createdBy         User               @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([leadId])
+  @@map("lead_notes")
+}
+
+model LeadActivity {
+  id                String             @id @default(uuid())
+  leadId            String             @map("lead_id")
+  lead              Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type              String             // EMAIL, PHONE, NOTE, STAGE_CHANGE, MEET
+  description       String
+  createdById       String             @map("created_by_id")
+  createdBy         User               @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([leadId])
+  @@map("lead_activities")
+}
+
+model LeadFollowup {
+  id                String             @id @default(uuid())
+  leadId            String             @map("lead_id")
+  lead              Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  scheduledAt       DateTime           @map("scheduled_at")
+  status            String             @default("PENDING") // PENDING, COMPLETED, CANCELLED
+  notes             String?
+  createdById       String             @map("created_by_id")
+  createdBy         User               @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([leadId])
+  @@map("lead_followups")
+}
+
+// Customer Directory
+model Customer {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  firstName         String             @map("first_name")
+  lastName          String             @map("last_name")
+  email             String             @unique
+  phone             String?
+  passportNumber    String?            @map("passport_number")
+  passportExpiry    DateTime?          @map("passport_expiry")
+  travelHistory     Json?              @map("travel_history") // Travel logs
+  documents         Json?              @map("documents") // URLs/Metadata of uploaded docs
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  isDeleted         Boolean            @default(false) @map("is_deleted")
+
+  // Relationships
+  itineraries       Itinerary[]
+  bookings          Booking[]
+
+  @@index([agencyId])
+  @@map("customers")
+}
+
+// Advanced Itinerary Builder
+model Itinerary {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  startDate         DateTime?          @map("start_date")
+  endDate           DateTime?          @map("end_date")
+  customerId        String?            @map("customer_id")
+  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status            String             @default("DRAFT") // DRAFT, SENT, APPROVED, REJECTED
+  totalPrice        Decimal            @default(0.00) @map("total_price") @db.Decimal(12, 2)
+  markupMargin      Decimal            @default(0.00) @map("markup_margin") @db.Decimal(5, 2) // Markup percent
+  taxRate           Decimal            @default(0.00) @map("tax_rate") @db.Decimal(5, 2) // GST/VAT percent
+  isTemplate        Boolean            @default(false) @map("is_template")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  // Relationships
+  days              ItineraryDay[]
+  bookings          Booking[]
+  quotations        Quotation[]
+
+  @@index([agencyId])
+  @@index([customerId])
+  @@map("itineraries")
+}
+
+model ItineraryDay {
+  id                String             @id @default(uuid())
+  itineraryId       String             @map("itinerary_id")
+  itinerary         Itinerary          @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  dayNumber         Int                @map("day_number")
+  title             String
+  description       String?
+
+  // Relationships
+  items             ItineraryItem[]
+
+  @@index([itineraryId])
+  @@map("itinerary_days")
+}
+
+model ItineraryItem {
+  id                String             @id @default(uuid())
+  itineraryDayId    String             @map("itinerary_day_id")
+  itineraryDay      ItineraryDay       @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
+  type              String             // FLIGHT, HOTEL, TRANSFER, ACTIVITY, MEAL, NOTE
+  title             String
+  details           Json?              // Flight numbers, hotel checkin timings, vehicle info
+  costPrice         Decimal            @default(0.00) @map("cost_price") @db.Decimal(12, 2)
+  sellingPrice      Decimal            @default(0.00) @map("selling_price") @db.Decimal(12, 2)
+  order             Int                @default(0)
+
+  @@index([itineraryDayId])
+  @@map("itinerary_items")
+}
+
+// Vendor Registry
+model Vendor {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name              String
+  type              String             // SERVICE (Hotels, Vehicles, Guides etc.) or PACKAGE (complete packages)
+  email             String?
+  phone             String?
+  address           String?
+  ledgerBalance     Decimal            @default(0.00) @map("ledger_balance") @db.Decimal(12, 2)
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  // Relationships
+  services          VendorService[]
+  packages          VendorPackage[]
+  vendorPayouts     VendorPayout[]
+
+  @@index([agencyId])
+  @@map("vendors")
+}
+
+model VendorService {
+  id                String             @id @default(uuid())
+  vendorId          String             @map("vendor_id")
+  vendor            Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  type              String             // HOTEL, VEHICLE, ACTIVITY, GUIDE, FLIGHT
+  name              String
+  description       String?
+  baseRate          Decimal            @default(0.00) @map("base_rate") @db.Decimal(12, 2)
+
+  // Relationships
+  rates             VendorRate[]
+
+  @@index([vendorId])
+  @@map("vendor_services")
+}
+
+model VendorPackage {
+  id                String             @id @default(uuid())
+  vendorId          String             @map("vendor_id")
+  vendor            Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  price             Decimal            @default(0.00) @db.Decimal(12, 2)
+
+  // Relationships
+  rates             VendorRate[]
+
+  @@index([vendorId])
+  @@map("vendor_packages")
+}
+
+model VendorRate {
+  id                String             @id @default(uuid())
+  vendorServiceId   String?            @map("vendor_service_id")
+  vendorService     VendorService?     @relation(fields: [vendorServiceId], references: [id], onDelete: Cascade)
+  vendorPackageId   String?            @map("vendor_package_id")
+  vendorPackage     VendorPackage?     @relation(fields: [vendorPackageId], references: [id], onDelete: Cascade)
+  rate              Decimal            @db.Decimal(12, 2)
+  seasonStart       DateTime           @map("season_start")
+  seasonEnd         DateTime           @map("season_end")
+
+  @@index([vendorServiceId])
+  @@index([vendorPackageId])
+  @@map("vendor_rates")
+}
+
+// Booking Operations
+model Booking {
+  id                   String             @id @default(uuid())
+  agencyId             String             @map("agency_id")
+  agency               Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  customerId           String             @map("customer_id")
+  customer             Customer           @relation(fields: [customerId], references: [id])
+  itineraryId          String?            @map("itinerary_id")
+  itinerary            Itinerary?         @relation(fields: [itineraryId], references: [id], onDelete: SetNull)
+  status               String             @default("PENDING") // PENDING, PROCESSING, CONFIRMED, CANCELLED, COMPLETED
+  voucherUrl           String?            @map("voucher_url")
+  ticketUrl            String?            @map("ticket_url")
+  hotelConfirmationCode String?           @map("hotel_confirmation_code")
+  driverName           String?            @map("driver_name")
+  driverPhone          String?            @map("driver_phone")
+  visaStatus           String?            @map("visa_status") // PENDING, DOCUMENTS_SUBMITTED, APPROVED, REJECTED
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  // Relationships
+  invoices             Invoice[]
+  expenses             Expense[]
+
+  @@index([agencyId])
+  @@index([customerId])
+  @@map("bookings")
+}
+
+// Financial Ledger & Accounting
+model Quotation {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  itineraryId       String             @map("itinerary_id")
+  itinerary         Itinerary          @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  amount            Decimal            @db.Decimal(12, 2)
+  status            String             @default("DRAFT") // DRAFT, SENT, ACCEPTED, REJECTED
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([agencyId])
+  @@map("quotations")
+}
+
+model Invoice {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  bookingId         String             @map("booking_id")
+  booking           Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  invoiceNumber     String             @unique @map("invoice_number")
+  amount            Decimal            @db.Decimal(12, 2)
+  dueDate           DateTime           @map("due_date")
+  status            String             @default("UNPAID") // UNPAID, PARTIALLY_PAID, PAID, OVERDUE
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  // Relationships
+  payments          Payment[]
+
+  @@index([agencyId])
+  @@map("invoices")
+}
+
+model Payment {
+  id                  String             @id @default(uuid())
+  agencyId            String             @map("agency_id")
+  agency              Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  invoiceId           String             @map("invoice_id")
+  invoice             Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount              Decimal            @db.Decimal(12, 2)
+  paymentMethod       String             @map("payment_method") // CASH, BANK_TRANSFER, CARD, UPI
+  transactionReference String?           @map("transaction_reference")
+  paymentDate         DateTime           @default(now()) @map("payment_date")
+
+  @@index([agencyId])
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+model Expense {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  bookingId         String?            @map("booking_id")
+  booking           Booking?           @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  amount            Decimal            @db.Decimal(12, 2)
+  category          String             // MARKETING, VENDOR_PAYMENT, UTILITIES, SALARIES, TRAVEL_DOCS
+  description       String?
+  expenseDate       DateTime           @default(now()) @map("expense_date")
+
+  @@index([agencyId])
+  @@map("expenses")
+}
+
+model VendorPayout {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  vendorId          String             @map("vendor_id")
+  vendor            Vendor             @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  amount            Decimal            @db.Decimal(12, 2)
+  paymentDate       DateTime           @default(now()) @map("payment_date")
+  status            String             @default("PAID") // PENDING, PAID
+
+  @@index([agencyId])
+  @@index([vendorId])
+  @@map("vendor_payouts")
+}
+
+// Security Audit Log
+model AuditLog {
+  id                String             @id @default(uuid())
+  agencyId          String             @map("agency_id")
+  agency            Agency             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  userId            String             @map("user_id")
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action            String             // CREATE, UPDATE, DELETE, LOGIN, EXPORT
+  entityType        String             @map("entity_type") // Lead, Invoice, Customer, Itinerary
+  entityId          String?            @map("entity_id")
+  details           String?
+  createdAt         DateTime           @default(now()) @map("created_at")
+
+  @@index([agencyId])
+  @@index([userId])
+  @@map("audit_logs")
+}
