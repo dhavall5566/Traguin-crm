@@ -18,7 +18,16 @@ import {
   type LeadRecord,
   type LeadUpdateInput,
 } from "@/lib/api/leads";
-import { CRM_API_DEFAULT_PAGE_SIZE } from "@/lib/api/pagination";
+import { bindCrmListFetch } from "@/lib/api/pagination";
+import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
+import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
+import {
+  CRM_CACHE,
+  getCrmWorkspaceList,
+  patchCrmWorkspaceItem,
+  prependCrmWorkspaceItem,
+  removeCrmWorkspaceItem,
+} from "@/lib/api/crm-workspace-store";
 import { listAgencyUsers, userNameMap } from "@/lib/api/users";
 import type { Lead, LeadFollowup, LeadNote, User } from "@/lib/store";
 
@@ -75,9 +84,11 @@ export type OptimisticTimelineMutation<T = string | undefined> = {
 };
 
 export function useLeadsPage() {
-  const [leads, setLeads] = useState<LeadRecord[]>([]);
+  const warmLeads = getCrmWorkspaceList<LeadRecord>(CRM_CACHE.leads);
+  const [leads, setLeads] = useState<LeadRecord[]>(() => warmLeads?.items ?? []);
   const [staff, setStaff] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !warmLeads);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [hydratingLeadId, setHydratingLeadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [extrasMap, setExtrasMap] = useState<Record<string, LeadExtras>>({});
@@ -99,44 +110,87 @@ export function useLeadsPage() {
 
   const refreshLeads = useCallback(async () => {
     setError(null);
+    invalidateCrmListCache(CRM_CACHE.leads);
     const extras = loadLeadExtras();
     setExtrasMap(extras);
     hydratedLeadIdsRef.current.clear();
-    const data = await listLeads({ limit: CRM_API_DEFAULT_PAGE_SIZE });
-    const names = userNameByIdRef.current;
-    setLeads(mapLeadItems(data.items, names, extras));
-  }, [mapLeadItems]);
+    setLoading(true);
+    setBackgroundLoading(false);
+    await loadProgressiveCrmList<
+      Awaited<ReturnType<typeof listLeads>>["items"][number],
+      LeadRecord
+    >({
+      cachePrefix: CRM_CACHE.leads,
+      fetchPage: bindCrmListFetch(listLeads),
+      mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
+      force: true,
+      onFirstPage: (firstItems) => {
+        setLeads(firstItems);
+        setLoading(false);
+      },
+      onComplete: (allItems) => {
+        setLeads(allItems);
+        setBackgroundLoading(false);
+      },
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+
     (async () => {
-      setLoading(true);
+      const hasWarm = Boolean(getCrmWorkspaceList(CRM_CACHE.leads));
+      if (!hasWarm) {
+        setLoading(true);
+      }
+      setBackgroundLoading(false);
       setError(null);
       try {
         const extras = loadLeadExtras();
-        const [users, data] = await Promise.all([
-          listAgencyUsers(),
-          listLeads({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-        ]);
+        const users = await listAgencyUsers();
         if (cancelled) return;
+
         setStaff(users);
         setExtrasMap(extras);
         hydratedLeadIdsRef.current.clear();
         const names = userNameMap(users);
         userNameByIdRef.current = names;
-        setLeads(mapLeadItems(data.items, names, extras));
+
+        await loadProgressiveCrmList<
+          Awaited<ReturnType<typeof listLeads>>["items"][number],
+          LeadRecord
+        >({
+          cachePrefix: CRM_CACHE.leads,
+          fetchPage: bindCrmListFetch(listLeads),
+          mapItem: (item) => applyLeadRecord(item, names, extras),
+          signal: controller.signal,
+          onFirstPage: (firstItems, firstTotal) => {
+            if (cancelled) return;
+            setLeads(firstItems);
+            setLoading(false);
+            if (firstItems.length < firstTotal) setBackgroundLoading(true);
+          },
+          onComplete: (allItems) => {
+            if (cancelled) return;
+            setLeads(allItems);
+            setBackgroundLoading(false);
+          },
+        });
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load leads");
+          setLoading(false);
+          setBackgroundLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [mapLeadItems]);
+  }, []);
 
   const replaceLeadInState = useCallback(
     (apiLead: Parameters<typeof applyLeadRecord>[0]) => {
@@ -200,6 +254,7 @@ export function useLeadsPage() {
           description: `Lead created from source: ${createInput.source || "Manual Input"}`,
         },
       });
+      invalidateCrmListCache(CRM_CACHE.leads);
       replaceLeadInState(apiLead);
     },
     [replaceLeadInState],
@@ -209,8 +264,22 @@ export function useLeadsPage() {
     async (leadId: string, status: Lead["status"]) => {
       const old = leads.find((l) => l.id === leadId);
       if (!old || old.status === status) return;
-      const apiLead = await patchLeadStatus(leadId, status, old.status);
-      replaceLeadInState(apiLead);
+
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, status } : l)),
+      );
+      patchCrmWorkspaceItem(CRM_CACHE.leads, leadId, { status });
+
+      try {
+        const apiLead = await patchLeadStatus(leadId, status, old.status);
+        replaceLeadInState(apiLead);
+      } catch (error) {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? { ...l, status: old.status } : l)),
+        );
+        patchCrmWorkspaceItem(CRM_CACHE.leads, leadId, { status: old.status });
+        throw error;
+      }
     },
     [leads, replaceLeadInState],
   );
@@ -222,19 +291,49 @@ export function useLeadsPage() {
         updateLeadExtras(leadId, { customerId, proposalItineraryId });
       }
       const scalarKeys = Object.keys(scalar) as (keyof LeadUpdateInput)[];
-      if (scalarKeys.length > 0) {
+      if (scalarKeys.length === 0) return;
+
+      const snapshot = leads.find((l) => l.id === leadId);
+      if (snapshot) {
+        setLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? { ...l, ...scalar } : l)),
+        );
+        patchCrmWorkspaceItem(CRM_CACHE.leads, leadId, scalar);
+      }
+
+      try {
         const apiLead = await updateLeadApi(leadId, scalar);
         replaceLeadInState(apiLead);
+      } catch (error) {
+        if (snapshot) {
+          setLeads((prev) =>
+            prev.map((l) => (l.id === leadId ? snapshot : l)),
+          );
+          patchCrmWorkspaceItem(CRM_CACHE.leads, leadId, snapshot);
+        }
+        throw error;
       }
     },
-    [replaceLeadInState, updateLeadExtras],
+    [leads, replaceLeadInState, updateLeadExtras],
   );
 
   const deleteLead = useCallback(async (leadId: string) => {
-    await deleteLeadApi(leadId);
+    const snapshot = leads.find((l) => l.id === leadId);
     hydratedLeadIdsRef.current.delete(leadId);
     setLeads((prev) => prev.filter((l) => l.id !== leadId));
-  }, []);
+    removeCrmWorkspaceItem(CRM_CACHE.leads, leadId);
+
+    try {
+      await deleteLeadApi(leadId);
+      invalidateCrmListCache(CRM_CACHE.leads);
+    } catch (error) {
+      if (snapshot) {
+        setLeads((prev) => [snapshot, ...prev]);
+        prependCrmWorkspaceItem(CRM_CACHE.leads, snapshot);
+      }
+      throw error;
+    }
+  }, [leads]);
 
   const addLeadNote = useCallback(
     (leadId: string, content: string, createdBy: string): OptimisticTimelineMutation => {
@@ -360,6 +459,7 @@ export function useLeadsPage() {
     leads,
     staff,
     loading,
+    backgroundLoading,
     hydratingLeadId,
     error,
     refreshLeads,

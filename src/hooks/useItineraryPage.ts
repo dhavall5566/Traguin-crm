@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listCustomers, mapCustomerFromApi } from "@/lib/api/customers";
-import { CRM_API_DEFAULT_PAGE_SIZE } from "@/lib/api/pagination";
+import { CRM_CACHE, getCrmWorkspaceList } from "@/lib/api/crm-workspace-store";
+import { bindCrmListFetch } from "@/lib/api/pagination";
+import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
 import {
   applyItineraryRecord,
   computeItineraryTotalPrice,
@@ -25,9 +27,16 @@ function withRecalculatedTotal(itin: Itinerary): Itinerary {
 }
 
 export function useItineraryPage() {
-  const [itineraries, setItineraries] = useState<Itinerary[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedItineraries = getCrmWorkspaceList<Itinerary>(CRM_CACHE.itineraries);
+  const cachedCustomers = getCrmWorkspaceList<Customer>(CRM_CACHE.customers);
+  const hasWarmCache = cachedItineraries || cachedCustomers;
+
+  const [itineraries, setItineraries] = useState<Itinerary[]>(
+    () => cachedItineraries?.items ?? [],
+  );
+  const [customers, setCustomers] = useState<Customer[]>(() => cachedCustomers?.items ?? []);
+  const [loading, setLoading] = useState(() => !hasWarmCache);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const itinerariesRef = useRef(itineraries);
@@ -68,21 +77,63 @@ export function useItineraryPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    let pendingBackground = 0;
+
     (async () => {
-      setLoading(true);
+      if (!hasWarmCache) setLoading(true);
+      setBackgroundLoading(false);
       setError(null);
       try {
         const extras = loadItineraryExtras();
-        const [itinData, customerData] = await Promise.all([
-          import("@/lib/api/itineraries").then((m) =>
-            m.listItineraries({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-          ),
-          listCustomers({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
+        const { listItineraries } = await import("@/lib/api/itineraries");
+
+        await Promise.all([
+          loadProgressiveCrmList<
+            Awaited<ReturnType<typeof listItineraries>>["items"][number],
+            Itinerary
+          >({
+            cachePrefix: CRM_CACHE.itineraries,
+            fetchPage: bindCrmListFetch(listItineraries),
+            mapItem: (item) => applyItineraryRecord(item, extras),
+            signal: controller.signal,
+            onFirstPage: (firstItems, firstTotal) => {
+              if (cancelled) return;
+              hydratedItineraryIdsRef.current.clear();
+              setItineraries(firstItems);
+              if (firstItems.length < firstTotal) {
+                pendingBackground += 1;
+                setBackgroundLoading(true);
+              }
+            },
+            onComplete: (allItems) => {
+              if (cancelled) return;
+              setItineraries(allItems);
+              pendingBackground = Math.max(0, pendingBackground - 1);
+              if (pendingBackground === 0) setBackgroundLoading(false);
+            },
+          }),
+          loadProgressiveCrmList({
+            cachePrefix: CRM_CACHE.customers,
+            fetchPage: bindCrmListFetch(listCustomers),
+            mapItem: mapCustomerFromApi,
+            signal: controller.signal,
+            onFirstPage: (firstItems, firstTotal) => {
+              if (cancelled) return;
+              setCustomers(firstItems);
+              if (firstItems.length < firstTotal) {
+                pendingBackground += 1;
+                setBackgroundLoading(true);
+              }
+            },
+            onComplete: (allItems) => {
+              if (cancelled) return;
+              setCustomers(allItems);
+              pendingBackground = Math.max(0, pendingBackground - 1);
+              if (pendingBackground === 0) setBackgroundLoading(false);
+            },
+          }),
         ]);
-        if (cancelled) return;
-        hydratedItineraryIdsRef.current.clear();
-        setCustomers(customerData.items.map(mapCustomerFromApi));
-        setItineraries(itinData.items.map((item) => applyItineraryRecord(item, extras)));
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load itineraries");
@@ -91,8 +142,10 @@ export function useItineraryPage() {
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -297,6 +350,7 @@ export function useItineraryPage() {
     itineraries,
     customers,
     loading,
+    backgroundLoading,
     error,
     dirtyIds,
     addItinerary,

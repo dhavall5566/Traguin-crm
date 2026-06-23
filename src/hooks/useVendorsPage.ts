@@ -2,20 +2,32 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createVendorPayout } from "@/lib/api/finance";
+import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
+import {
+  CRM_CACHE,
+  getCrmWorkspaceList,
+  prependCrmWorkspaceItem,
+  removeCrmWorkspaceItem,
+} from "@/lib/api/crm-workspace-store";
+import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
+import { bindCrmListFetch } from "@/lib/api/pagination";
 import {
   createVendor as createVendorApi,
   deleteVendor as deleteVendorApi,
   getVendor,
+  listVendors,
   mapVendorFromApi,
   updateVendor as updateVendorApi,
   type VendorCreateInput,
 } from "@/lib/api/vendors";
-import { CRM_API_DEFAULT_PAGE_SIZE } from "@/lib/api/pagination";
 import type { Vendor } from "@/lib/store";
 
 export function useVendorsPage() {
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = getCrmWorkspaceList<Vendor>(CRM_CACHE.vendors);
+  const [vendors, setVendors] = useState<Vendor[]>(() => cached?.items ?? []);
+  const [total, setTotal] = useState(() => cached?.total ?? 0);
+  const [loading, setLoading] = useState(() => !cached);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -23,6 +35,51 @@ export function useVendorsPage() {
   const vendorsRef = useRef(vendors);
   const hydratedVendorIdsRef = useRef<Set<string>>(new Set());
   vendorsRef.current = vendors;
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      const warm = getCrmWorkspaceList<Vendor>(CRM_CACHE.vendors);
+      if (!warm) setLoading(true);
+      setBackgroundLoading(false);
+      setError(null);
+      try {
+        await loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.vendors,
+          fetchPage: bindCrmListFetch(listVendors),
+          mapItem: mapVendorFromApi,
+          signal: controller.signal,
+          onFirstPage: (firstItems, firstTotal) => {
+            if (cancelled) return;
+            hydratedVendorIdsRef.current.clear();
+            setVendors(firstItems);
+            setTotal(firstTotal);
+            setLoading(false);
+            if (firstItems.length < firstTotal) setBackgroundLoading(true);
+          },
+          onComplete: (allItems, allTotal) => {
+            if (cancelled) return;
+            setVendors(allItems);
+            setTotal(allTotal);
+            setBackgroundLoading(false);
+          },
+        });
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Failed to load vendors");
+          setLoading(false);
+          setBackgroundLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
 
   const markDirty = useCallback((id: string) => {
     setDirtyIds((prev) => new Set(prev).add(id));
@@ -49,35 +106,10 @@ export function useVendorsPage() {
     return record;
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await import("@/lib/api/vendors").then((m) =>
-          m.listVendors({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-        );
-        if (!cancelled) {
-          hydratedVendorIdsRef.current.clear();
-          setVendors(data.items.map(mapVendorFromApi));
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load vendors");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const addVendor = useCallback(
     async (input: VendorCreateInput) => {
       const apiVendor = await createVendorApi(input);
+      invalidateCrmListCache(CRM_CACHE.vendors);
       const record = replaceVendorInState(apiVendor);
       clearDirty(record.id);
       return record;
@@ -115,6 +147,7 @@ export function useVendorsPage() {
           ledgerBalance: snap.ledgerBalance,
           rates: snap.rates ?? [],
         });
+        invalidateCrmListCache(CRM_CACHE.vendors);
         replaceVendorInState(apiVendor);
         clearDirty(vendorId);
         return mapVendorFromApi(apiVendor);
@@ -127,7 +160,7 @@ export function useVendorsPage() {
   );
 
   const deleteVendor = useCallback(async (vendorId: string) => {
-    await deleteVendorApi(vendorId);
+    const snapshot = vendors.find((v) => v.id === vendorId);
     hydratedVendorIdsRef.current.delete(vendorId);
     setVendors((prev) => prev.filter((v) => v.id !== vendorId));
     setDirtyIds((prev) => {
@@ -135,7 +168,19 @@ export function useVendorsPage() {
       next.delete(vendorId);
       return next;
     });
-  }, []);
+    removeCrmWorkspaceItem(CRM_CACHE.vendors, vendorId);
+
+    try {
+      await deleteVendorApi(vendorId);
+      invalidateCrmListCache(CRM_CACHE.vendors);
+    } catch (error) {
+      if (snapshot) {
+        setVendors((prev) => [snapshot, ...prev]);
+        prependCrmWorkspaceItem(CRM_CACHE.vendors, snapshot);
+      }
+      throw error;
+    }
+  }, [vendors]);
 
   const recordVendorPayout = useCallback(
     async (vendorId: string, amount: number) => {
@@ -159,7 +204,9 @@ export function useVendorsPage() {
 
   return {
     vendors,
+    total,
     loading,
+    backgroundLoading,
     error,
     dirtyIds,
     savingId,

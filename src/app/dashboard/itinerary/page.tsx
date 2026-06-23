@@ -4,6 +4,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useR
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, Itinerary, ItineraryItem } from '@/lib/store';
 import { useItineraryPage } from '@/hooks/useItineraryPage';
+import { useBookingsInvoices } from '@/hooks/useBookingsInvoices';
 import { getLead, mergeLeadExtras } from '@/lib/api/leads';
 import { computeItineraryTotalPrice, newLocalId } from '@/lib/api/itineraries';
 import {
@@ -67,7 +68,7 @@ export default function ItineraryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentAgency = useStore((state) => state.currentAgency);
-  const bookings = useStore((state) => state.bookings);
+  const { bookings } = useBookingsInvoices();
   const {
     itineraries,
     customers,

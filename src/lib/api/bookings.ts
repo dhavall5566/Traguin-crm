@@ -54,3 +54,21 @@ export async function listBookings(params?: {
     `/api/crm/bookings${qs ? `?${qs}` : ""}`,
   );
 }
+
+export type BookingCreateInput = {
+  customerId: string;
+  itineraryId?: string;
+  status?: Booking["status"];
+};
+
+export async function createBooking(input: BookingCreateInput): Promise<ApiBookingRead> {
+  return crmFetchJson<ApiBookingRead>("/api/crm/bookings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_id: input.customerId,
+      itinerary_id: input.itineraryId ?? null,
+      status: input.status ?? "PENDING",
+    }),
+  });
+}

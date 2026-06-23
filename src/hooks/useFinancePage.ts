@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { listBookings, mapBookingFromApi } from "@/lib/api/bookings";
 import { listCustomers, mapCustomerFromApi } from "@/lib/api/customers";
+import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
+import {
+  CRM_CACHE,
+  getCrmWorkspaceList,
+  prependCrmWorkspaceItem,
+  removeCrmWorkspaceItem,
+} from "@/lib/api/crm-workspace-store";
 import {
   createExpense as createExpenseApi,
   createInvoice as createInvoiceApi,
@@ -24,66 +31,177 @@ import {
   type InvoiceUpdateInput,
 } from "@/lib/api/finance";
 import { listItineraries, mapItineraryFromApi } from "@/lib/api/itineraries";
-import { CRM_API_DEFAULT_PAGE_SIZE } from "@/lib/api/pagination";
+import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
+import { bindCrmListFetch } from "@/lib/api/pagination";
 import { listVendors, mapVendorFromApi } from "@/lib/api/vendors";
 import type { Booking, Customer, Expense, Invoice, Itinerary, Payment, Vendor, VendorPayout } from "@/lib/store";
 
 export function useFinancePage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [vendorPayouts, setVendorPayouts] = useState<VendorPayout[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [itineraries, setItineraries] = useState<Itinerary[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedInvoices = getCrmWorkspaceList<Invoice>(CRM_CACHE.invoices);
+  const cachedPayments = getCrmWorkspaceList<Payment>(CRM_CACHE.payments);
+  const cachedExpenses = getCrmWorkspaceList<Expense>(CRM_CACHE.expenses);
+  const cachedPayouts = getCrmWorkspaceList<VendorPayout>(CRM_CACHE.vendorPayouts);
+  const cachedBookings = getCrmWorkspaceList<Booking>(CRM_CACHE.bookings);
+  const cachedCustomers = getCrmWorkspaceList<Customer>(CRM_CACHE.customers);
+  const cachedItineraries = getCrmWorkspaceList<Itinerary>(CRM_CACHE.itineraries);
+  const cachedVendors = getCrmWorkspaceList<Vendor>(CRM_CACHE.vendors);
+
+  const hasWarmCache =
+    cachedInvoices ||
+    cachedPayments ||
+    cachedExpenses ||
+    cachedPayouts ||
+    cachedBookings ||
+    cachedCustomers ||
+    cachedItineraries ||
+    cachedVendors;
+
+  const [invoices, setInvoices] = useState<Invoice[]>(() => cachedInvoices?.items ?? []);
+  const [payments, setPayments] = useState<Payment[]>(() => cachedPayments?.items ?? []);
+  const [expenses, setExpenses] = useState<Expense[]>(() => cachedExpenses?.items ?? []);
+  const [vendorPayouts, setVendorPayouts] = useState<VendorPayout[]>(
+    () => cachedPayouts?.items ?? [],
+  );
+  const [bookings, setBookings] = useState<Booking[]>(() => cachedBookings?.items ?? []);
+  const [customers, setCustomers] = useState<Customer[]>(() => cachedCustomers?.items ?? []);
+  const [itineraries, setItineraries] = useState<Itinerary[]>(
+    () => cachedItineraries?.items ?? [],
+  );
+  const [vendors, setVendors] = useState<Vendor[]>(() => cachedVendors?.items ?? []);
+  const [loading, setLoading] = useState(() => !hasWarmCache);
+  const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (force = false) => {
     setError(null);
-    const [
-      invoiceData,
-      paymentData,
-      expenseData,
-      payoutData,
-      bookingData,
-      customerData,
-      itineraryData,
-      vendorData,
-    ] = await Promise.all([
-      listInvoices({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listPayments({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listExpenses({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listVendorPayouts({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listBookings({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listCustomers({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listItineraries({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-      listVendors({ limit: CRM_API_DEFAULT_PAGE_SIZE }),
-    ]);
-    setInvoices(invoiceData.items.map(mapInvoiceFromApi));
-    setPayments(paymentData.items.map(mapPaymentFromApi));
-    setExpenses(expenseData.items.map(mapExpenseFromApi));
-    setVendorPayouts(payoutData.items.map(mapVendorPayoutFromApi));
-    setBookings(bookingData.items.map(mapBookingFromApi));
-    setCustomers(customerData.items.map(mapCustomerFromApi));
-    setItineraries(itineraryData.items.map((item) => mapItineraryFromApi(item)));
-    setVendors(vendorData.items.map(mapVendorFromApi));
+    if (force) {
+      invalidateCrmListCache(CRM_CACHE.invoices);
+      invalidateCrmListCache(CRM_CACHE.payments);
+      invalidateCrmListCache(CRM_CACHE.expenses);
+      invalidateCrmListCache(CRM_CACHE.vendorPayouts);
+      invalidateCrmListCache(CRM_CACHE.bookings);
+      invalidateCrmListCache(CRM_CACHE.customers);
+      invalidateCrmListCache(CRM_CACHE.itineraries);
+      invalidateCrmListCache(CRM_CACHE.vendors);
+    }
+
+    if (!force && hasWarmCache) {
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setBackgroundLoading(false);
+
+    const controller = new AbortController();
+    let pendingBackground = 0;
+
+    const trackFirst = <T,>(setter: (items: T[]) => void) => (items: T[], total: number) => {
+      setter(items);
+      if (items.length < total) {
+        pendingBackground += 1;
+        setBackgroundLoading(true);
+      }
+    };
+
+    const trackComplete = <T,>(setter: (items: T[]) => void) => (items: T[]) => {
+      setter(items);
+      pendingBackground = Math.max(0, pendingBackground - 1);
+      if (pendingBackground === 0) setBackgroundLoading(false);
+    };
+
+    try {
+      await Promise.all([
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.invoices,
+          fetchPage: bindCrmListFetch(listInvoices),
+          mapItem: mapInvoiceFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setInvoices),
+          onComplete: trackComplete(setInvoices),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.payments,
+          fetchPage: bindCrmListFetch(listPayments),
+          mapItem: mapPaymentFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setPayments),
+          onComplete: trackComplete(setPayments),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.expenses,
+          fetchPage: bindCrmListFetch(listExpenses),
+          mapItem: mapExpenseFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setExpenses),
+          onComplete: trackComplete(setExpenses),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.vendorPayouts,
+          fetchPage: bindCrmListFetch(listVendorPayouts),
+          mapItem: mapVendorPayoutFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setVendorPayouts),
+          onComplete: trackComplete(setVendorPayouts),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.bookings,
+          fetchPage: bindCrmListFetch(listBookings),
+          mapItem: mapBookingFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setBookings),
+          onComplete: trackComplete(setBookings),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.customers,
+          fetchPage: bindCrmListFetch(listCustomers),
+          mapItem: mapCustomerFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setCustomers),
+          onComplete: trackComplete(setCustomers),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.itineraries,
+          fetchPage: bindCrmListFetch(listItineraries),
+          mapItem: mapItineraryFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setItineraries),
+          onComplete: trackComplete(setItineraries),
+        }),
+        loadProgressiveCrmList({
+          cachePrefix: CRM_CACHE.vendors,
+          fetchPage: bindCrmListFetch(listVendors),
+          mapItem: mapVendorFromApi,
+          signal: controller.signal,
+          force,
+          onFirstPage: trackFirst(setVendors),
+          onComplete: trackComplete(setVendors),
+        }),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
+    void (async () => {
+      if (cancelled) return;
       try {
-        await loadAll();
+        await loadAll(false);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load finance data");
+          setLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -106,6 +224,7 @@ export function useFinancePage() {
   const addInvoice = useCallback(
     async (input: InvoiceCreateInput) => {
       const apiInvoice = await createInvoiceApi(input);
+      invalidateCrmListCache(CRM_CACHE.invoices);
       return replaceInvoiceInState(apiInvoice);
     },
     [replaceInvoiceInState],
@@ -114,6 +233,7 @@ export function useFinancePage() {
   const updateInvoice = useCallback(
     async (invoiceId: string, input: InvoiceUpdateInput) => {
       const apiInvoice = await updateInvoiceApi(invoiceId, input);
+      invalidateCrmListCache(CRM_CACHE.invoices);
       return replaceInvoiceInState(apiInvoice);
     },
     [replaceInvoiceInState],
@@ -121,23 +241,46 @@ export function useFinancePage() {
 
   const recordPayment = useCallback(
     async (invoiceId: string, amount: number, method: string, ref?: string) => {
-      const apiPayment = await createPaymentApi({
+      const optimisticId = `optimistic-${Date.now()}`;
+      const optimisticPayment: Payment = {
+        id: optimisticId,
+        agencyId: invoices.find((i) => i.id === invoiceId)?.agencyId ?? "",
         invoiceId,
         amount,
         paymentMethod: method,
-        transactionReference: ref,
-      });
-      const payment = mapPaymentFromApi(apiPayment);
-      setPayments((prev) => [payment, ...prev]);
-      const apiInvoice = await getInvoice(invoiceId);
-      replaceInvoiceInState(apiInvoice);
-      return payment;
+        transactionReference: ref ?? "",
+        paymentDate: new Date().toISOString(),
+      };
+      setPayments((prev) => [optimisticPayment, ...prev]);
+      prependCrmWorkspaceItem(CRM_CACHE.payments, optimisticPayment);
+
+      try {
+        const apiPayment = await createPaymentApi({
+          invoiceId,
+          amount,
+          paymentMethod: method,
+          transactionReference: ref,
+        });
+        invalidateCrmListCache(CRM_CACHE.payments);
+        const payment = mapPaymentFromApi(apiPayment);
+        setPayments((prev) =>
+          prev.map((p) => (p.id === optimisticId ? payment : p)),
+        );
+        const apiInvoice = await getInvoice(invoiceId);
+        replaceInvoiceInState(apiInvoice);
+        return payment;
+      } catch (error) {
+        setPayments((prev) => prev.filter((p) => p.id !== optimisticId));
+        removeCrmWorkspaceItem(CRM_CACHE.payments, optimisticId);
+        throw error;
+      }
     },
-    [replaceInvoiceInState],
+    [invoices, replaceInvoiceInState],
   );
 
   const addExpense = useCallback(async (input: ExpenseCreateInput) => {
     const apiExpense = await createExpenseApi(input);
+    invalidateCrmListCache(CRM_CACHE.expenses);
     const record = mapExpenseFromApi(apiExpense);
     setExpenses((prev) => [record, ...prev]);
     return record;
@@ -145,15 +288,28 @@ export function useFinancePage() {
 
   const updateExpense = useCallback(async (expenseId: string, input: ExpenseCreateInput) => {
     const apiExpense = await updateExpenseApi(expenseId, input);
+    invalidateCrmListCache(CRM_CACHE.expenses);
     const record = mapExpenseFromApi(apiExpense);
     setExpenses((prev) => prev.map((e) => (e.id === expenseId ? record : e)));
     return record;
   }, []);
 
   const deleteExpense = useCallback(async (expenseId: string) => {
-    await deleteExpenseApi(expenseId);
+    const snapshot = expenses.find((e) => e.id === expenseId);
     setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-  }, []);
+    removeCrmWorkspaceItem(CRM_CACHE.expenses, expenseId);
+
+    try {
+      await deleteExpenseApi(expenseId);
+      invalidateCrmListCache(CRM_CACHE.expenses);
+    } catch (error) {
+      if (snapshot) {
+        setExpenses((prev) => [snapshot, ...prev]);
+        prependCrmWorkspaceItem(CRM_CACHE.expenses, snapshot);
+      }
+      throw error;
+    }
+  }, [expenses]);
 
   return {
     invoices,
@@ -165,6 +321,7 @@ export function useFinancePage() {
     itineraries,
     vendors,
     loading,
+    backgroundLoading,
     error,
     addInvoice,
     updateInvoice,
@@ -172,6 +329,6 @@ export function useFinancePage() {
     addExpense,
     updateExpense,
     deleteExpense,
-    refresh: loadAll,
+    refresh: () => loadAll(true),
   };
 }

@@ -1,8 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { useVendorsPage } from '@/hooks/useVendorsPage';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import {
   Plus,
   Search,
@@ -20,6 +25,7 @@ export default function VendorsPage() {
   const {
     vendors,
     loading,
+    backgroundLoading,
     error,
     dirtyIds,
     savingId,
@@ -32,6 +38,7 @@ export default function VendorsPage() {
   } = useVendorsPage();
 
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [selectedVendorId, setSelectedVendorId] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState('');
@@ -51,11 +58,16 @@ export default function VendorsPage() {
   const [rateType, setRateType] = useState('HOTEL');
   const [ratePrice, setRatePrice] = useState('');
 
-  const agencyVendors = vendors.filter(
-    (v) =>
-      v.agencyId === currentAgency.id &&
-      (v.name + ' ' + v.type).toLowerCase().includes(search.toLowerCase()),
-  );
+  const agencyVendors = useMemo(() => {
+    const q = debouncedSearch.toLowerCase();
+    return vendors.filter(
+      (v) =>
+        v.agencyId === currentAgency.id &&
+        (v.name + ' ' + v.type).toLowerCase().includes(q),
+    );
+  }, [vendors, currentAgency.id, debouncedSearch]);
+
+  const vendorsPagination = useClientPagination(agencyVendors, undefined, [debouncedSearch]);
 
   React.useEffect(() => {
     if (loading) return;
@@ -198,52 +210,56 @@ export default function VendorsPage() {
       {/* Grid workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs items-start">
         {/* Left Side: Table of vendors */}
-        <div className="lg:col-span-2 p-5 bg-card border border-border rounded-xl space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Registered Partners Directory</h2>
+        <div className="lg:col-span-2">
+          <CrmTablePanel>
+          <p className="crm-table-panel__title">Registered Partners Directory</p>
+          <div className="crm-table-wrap">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="crm-data-table min-w-[560px]">
               <thead>
-                <tr className="border-b border-border/50 text-[10px] text-muted-foreground uppercase font-bold">
-                  <th className="pb-2">Vendor Name</th>
-                  <th className="pb-2">Service Type</th>
-                  <th className="pb-2">Email</th>
-                  <th className="pb-2 text-right">Owed Balance</th>
+                <tr>
+                  <th>Vendor Name</th>
+                  <th>Service Type</th>
+                  <th>Email</th>
+                  <th className="text-right">Owed Balance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/30">
+              <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-muted-foreground">
-                      Loading vendors…
+                    <td colSpan={4} className="py-3">
+                      <CrmTableSkeleton columns={4} rows={8} />
                     </td>
                   </tr>
-                ) : agencyVendors.map((vendor) => (
+                ) : vendorsPagination.pageItems.map((vendor) => (
                   <tr
                     key={vendor.id}
                     onClick={() => {
                       setDeleteError(null);
                       setSelectedVendorId(vendor.id);
                     }}
-                    className={`hover:bg-secondary/20 cursor-pointer ${selectedVendorId === vendor.id ? 'bg-primary/5' : ''}`}
+                    className={`cursor-pointer ${selectedVendorId === vendor.id ? 'crm-data-table__row--selected' : ''}`}
                   >
-                    <td className="py-3 font-semibold text-foreground flex items-center space-x-2">
+                    <td className="font-semibold">
+                      <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                         {vendor.name.charAt(0)}
                       </div>
                       <span>{vendor.name}</span>
+                      </div>
                     </td>
-                    <td className="py-3 text-muted-foreground uppercase font-bold text-[9px] tracking-wider">
-                      {vendor.type}
+                    <td>
+                      <span className="crm-table-badge">{vendor.type}</span>
                     </td>
-                    <td className="py-3 text-muted-foreground">{vendor.email || 'None'}</td>
-                    <td className="py-3 text-right font-bold text-amber-500">
+                    <td className="text-muted-foreground">{vendor.email || 'None'}</td>
+                    <td className="text-right font-bold text-amber-500">
                       ₹{Number(vendor.ledgerBalance).toLocaleString('en-IN')}
                     </td>
                   </tr>
                 ))}
                 {!loading && agencyVendors.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={4} className="crm-data-table__empty">
                       No vendors match this query.
                     </td>
                   </tr>
@@ -251,6 +267,23 @@ export default function VendorsPage() {
               </tbody>
             </table>
           </div>
+          {!loading ? (
+            <CrmTablePagination
+              label="Vendors"
+              rangeStart={vendorsPagination.rangeStart}
+              rangeEnd={vendorsPagination.rangeEnd}
+              total={vendorsPagination.total}
+              page={vendorsPagination.page}
+              totalPages={vendorsPagination.totalPages}
+              hasPrev={vendorsPagination.hasPrev}
+              hasNext={vendorsPagination.hasNext}
+              onPrev={vendorsPagination.goPrev}
+              onNext={vendorsPagination.goNext}
+              backgroundLoading={backgroundLoading}
+            />
+          ) : null}
+          </div>
+          </CrmTablePanel>
         </div>
 
         {/* Right Side: Ledger & Rate card details */}

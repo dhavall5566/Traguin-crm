@@ -4,6 +4,16 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 're
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useStore, Lead } from '@/lib/store';
 import { useLeadsPage } from '@/hooks/useLeadsPage';
+import { useCustomersPage } from '@/hooks/useCustomersPage';
+import { useItineraryPage } from '@/hooks/useItineraryPage';
+import { useBookingsInvoices } from '@/hooks/useBookingsInvoices';
+import { createBooking as createBookingApi, mapBookingFromApi } from '@/lib/api/bookings';
+import { createInvoice, mapInvoiceFromApi } from '@/lib/api/finance';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import {
   LeadTimelineActivityBody,
   LeadTimelineNoteBody,
@@ -18,16 +28,13 @@ import {
 import {
   Plus,
   Search,
-  SlidersHorizontal,
   X,
   Activity,
   Trash2,
   Clock,
-  Filter,
   UserPlus,
   Users,
   ClipboardList,
-  LayoutGrid,
   Save,
   Check,
 } from 'lucide-react';
@@ -67,10 +74,31 @@ const STAGE_TOP: Record<(typeof stages)[number]['id'], string> = {
 type LeadViewMode = 'kanban' | 'tiles' | 'list';
 
 const LEAD_VIEW_OPTIONS: { value: LeadViewMode; label: string }[] = [
-  { value: 'kanban', label: 'Kanban board' },
-  { value: 'tiles', label: 'Tile grid' },
-  { value: 'list', label: 'Table list' },
+  { value: 'kanban', label: 'Kanban' },
+  { value: 'tiles', label: 'Pipeline' },
+  { value: 'list', label: 'Table' },
 ];
+
+type StatsPeriod = 'today' | '7d' | '30d' | 'all';
+
+const STATS_PERIOD_LABELS: Record<StatsPeriod, string> = {
+  today: 'Today',
+  '7d': 'Last 7 days',
+  '30d': 'Last 30 days',
+  all: 'All time',
+};
+
+function leadCreatedWithinPeriod(createdAt: string, period: StatsPeriod): boolean {
+  if (period === 'all') return true;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (period === 'today') {
+    return new Date(createdAt).getTime() >= start.getTime();
+  }
+  const days = period === '7d' ? 7 : 30;
+  start.setDate(start.getDate() - days);
+  return new Date(createdAt).getTime() >= start.getTime();
+}
 
 export default function CRMPage() {
   const router = useRouter();
@@ -83,6 +111,7 @@ export default function CRMPage() {
     leadFollowups,
     staff,
     loading: leadsLoading,
+    backgroundLoading: leadsBackgroundLoading,
     error: leadsError,
     hydrateLeadDetail,
     addLead,
@@ -94,15 +123,11 @@ export default function CRMPage() {
     addLeadFollowup,
   } = useLeadsPage();
 
-  const {
-    currentAgency,
-    currentUser,
-    customers,
-    itineraries,
-    bookings,
-    invoices,
-    createBooking,
-  } = useStore();
+  const { customers } = useCustomersPage();
+  const { itineraries } = useItineraryPage();
+  const { bookings, invoices, refresh: refreshBookingsInvoices } = useBookingsInvoices();
+
+  const { currentAgency, currentUser, workspacePreferences } = useStore();
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [savingLead, setSavingLead] = useState(false);
@@ -119,7 +144,9 @@ export default function CRMPage() {
   };
   // Search & Filter state
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
   const [filterAgent, setFilterAgent] = useState('ALL');
+  const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('30d');
   type SortBy = 'value' | 'date';
   const [sortBy, setSortBy] = useState<SortBy>('date');
 
@@ -545,30 +572,68 @@ export default function CRMPage() {
   const [followupNotes, setFollowupNotes] = useState('');
 
   // Lead Details Notes/Reminders form state, current agency, and selected filter options
-  const agencyLeads = leads
-    .filter(l => l.agencyId === currentAgency.id)
-    .filter(l => {
-      const matchSearch = (l.title + ' ' + l.firstName + ' ' + l.lastName)
-        .toLowerCase()
-        .includes(search.toLowerCase());
-      
-      const matchAgent = filterAgent === 'ALL' || l.assignedToId === filterAgent;
-      
-      return matchSearch && matchAgent;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'value') {
-        return Number(b.value) - Number(a.value);
-      } else {
+  const agencyLeads = useMemo(() => {
+    const q = debouncedSearch.toLowerCase();
+    return leads
+      .filter((l) => l.agencyId === currentAgency.id)
+      .filter((l) => leadCreatedWithinPeriod(l.createdAt, statsPeriod))
+      .filter((l) => {
+        const matchSearch = (l.title + ' ' + l.firstName + ' ' + l.lastName)
+          .toLowerCase()
+          .includes(q);
+        const matchAgent = filterAgent === 'ALL' || l.assignedToId === filterAgent;
+        return matchSearch && matchAgent;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'value') {
+          return Number(b.value) - Number(a.value);
+        }
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      }
-    });
+      });
+  }, [leads, currentAgency.id, debouncedSearch, filterAgent, sortBy, statsPeriod]);
 
   // Get staff for dropdown list (loaded from CRM API)
   const previousAgentName = staff.find((u) => u.id === newAssigned)?.name;
 
-  const hasActiveFilters = search.trim() !== '' || filterAgent !== 'ALL';
+  const hasActiveFilters =
+    search.trim() !== '' || filterAgent !== 'ALL' || statsPeriod !== 'all';
   const isEmptyAgency = !leadsLoading && !leadsError && leads.length === 0;
+
+  const leadsTablePagination = useClientPagination(agencyLeads, undefined, [
+    debouncedSearch,
+    filterAgent,
+    sortBy,
+    leadView,
+    statsPeriod,
+  ]);
+
+  const leadStats = useMemo(() => {
+    const agency = leads.filter(
+      (l) =>
+        l.agencyId === currentAgency.id &&
+        leadCreatedWithinPeriod(l.createdAt, statsPeriod),
+    );
+    const newCount = agency.filter((l) => l.status === 'NEW').length;
+    const wonCount = agency.filter((l) => l.status === 'CONFIRMED').length;
+    const lostCount = agency.filter((l) => l.status === 'LOST').length;
+    const totalClosed = agency
+      .filter((l) => l.status === 'CONFIRMED')
+      .reduce((sum, l) => sum + Number(l.value), 0);
+    const conversionRate = agency.length ? (wonCount / agency.length) * 100 : 0;
+    return {
+      newCount,
+      wonCount,
+      lostCount,
+      totalClosed,
+      conversionRate,
+      total: agency.length,
+    };
+  }, [leads, currentAgency.id, statsPeriod]);
+
+  const formatLeadId = (id: string) => {
+    const compact = id.replace(/-/g, '').slice(-8).toUpperCase();
+    return `LD-${new Date().getFullYear()}-${compact}`;
+  };
 
   const bookableItineraries = useMemo(() => {
     const withDays = itineraries.filter(
@@ -815,15 +880,47 @@ export default function CRMPage() {
     }
 
     void runLeadAction('Create booking', async () => {
+      if (!cid) {
+        alert('Link or create a customer profile before converting to a booking.');
+        return;
+      }
+
       if (cid && cid !== (selectedLead.customerId || '').trim()) {
         await updateLead(selectedLead.id, { customerId: cid });
       }
 
-      const newBooking = createBooking(cid || '', itineraryId, {
-        firstName: selectedLead.firstName,
-        lastName: selectedLead.lastName,
+      const apiBooking = await createBookingApi({
+        customerId: cid,
+        itineraryId,
+        status: 'PENDING',
       });
-      const draftedInvoice = useStore.getState().invoices.find((inv) => inv.bookingId === newBooking.id);
+      const newBooking = mapBookingFromApi(apiBooking);
+
+      const dueDays = Math.min(
+        365,
+        Math.max(1, Math.round(Number(workspacePreferences.defaultInvoiceDueDays) || 30)),
+      );
+      const dueDate = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(100 + Math.random() * 900))}`;
+
+      let draftedInvoice = null as ReturnType<typeof mapInvoiceFromApi> | null;
+      try {
+        const apiInvoice = await createInvoice({
+          bookingId: newBooking.id,
+          invoiceNumber,
+          amount: Number(itinerary.totalPrice) || 0,
+          dueDate,
+          status: 'UNPAID',
+        });
+        draftedInvoice = mapInvoiceFromApi(apiInvoice);
+      } catch {
+        /* booking succeeded; invoice can be created from Billing */
+      }
+
+      await refreshBookingsInvoices();
+
       const invNo = draftedInvoice?.invoiceNumber;
       const invAmt = draftedInvoice != null ? Number(draftedInvoice.amount) : 0;
 
@@ -941,27 +1038,24 @@ export default function CRMPage() {
           Changes saved successfully
         </div>
       )}
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border/50 pb-4">
+    <div className="space-y-5">
+      <div className="crm-page-header">
         <div>
-          <h1 className="crm-page-title">
-            Lead CRM Pipeline
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Pick a layout from View. Use list or tiles for inline stage updates; board groups by pipeline column.
+          <h1 className="crm-page-header__title">Leads</h1>
+          <p className="crm-page-header__meta">
+            {leadStats.total} lead{leadStats.total === 1 ? '' : 's'} · {STATS_PERIOD_LABELS[statsPeriod]}
+            {leadsBackgroundLoading ? ' · Syncing…' : ''}
           </p>
         </div>
-        <button
-          onClick={openAddLeadModal}
-          className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-indigo-600/10 self-stretch sm:self-auto justify-center"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Lead</span>
-        </button>
+        <div className="crm-page-actions">
+          <button type="button" onClick={openAddLeadModal} className="crm-btn-primary">
+            <Plus className="w-4 h-4" />
+            <span>New Lead</span>
+          </button>
+        </div>
       </div>
 
-      {leadsLoading && (
+      {leadsLoading && isEmptyAgency && (
         <div className="rounded-xl border border-border bg-card/60 px-4 py-8 text-center text-xs text-muted-foreground">
           Loading leads from your workspace…
         </div>
@@ -996,68 +1090,103 @@ export default function CRMPage() {
         </div>
       )}
 
+      {!isEmptyAgency && (
+        <>
+          <div className="crm-stats-toolbar">
+            <select
+              className="crm-stats-period"
+              value={statsPeriod}
+              onChange={(e) => setStatsPeriod(e.target.value as StatsPeriod)}
+              aria-label="Stats period"
+            >
+              <option value="today">Today</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="all">All time</option>
+            </select>
+          </div>
+
+          <div className="crm-stats-bar">
+            <div className="crm-stats-bar__item">
+              <div className="crm-stats-bar__label">New</div>
+              <div className="crm-stats-bar__value">{leadStats.newCount}</div>
+            </div>
+            <div className="crm-stats-bar__item">
+              <div className="crm-stats-bar__label">Won</div>
+              <div className="crm-stats-bar__value">{leadStats.wonCount}</div>
+            </div>
+            <div className="crm-stats-bar__item">
+              <div className="crm-stats-bar__label">Lost</div>
+              <div className="crm-stats-bar__value">{leadStats.lostCount}</div>
+            </div>
+            <div className="crm-stats-bar__item">
+              <div className="crm-stats-bar__label">Total closed</div>
+              <div className="crm-stats-bar__value">
+                ₹{leadStats.totalClosed.toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="crm-stats-bar__item">
+              <div className="crm-stats-bar__label">Lead Conversion Rate</div>
+              <div className="crm-stats-bar__value">
+                {leadStats.conversionRate.toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Search, Filter, Sort Controls */}
-      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center text-xs">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
+      <div className="crm-filter-bar text-xs">
+        <div className="crm-filter-bar__search">
+          <Search className="crm-filter-bar__search-icon" />
           <input
             type="text"
-            placeholder="Search leads by customer name or destination request..."
+            placeholder="Search leads..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-card border border-border focus:border-primary focus:outline-none"
+            className="crm-filter-bar__input"
           />
         </div>
-        
-        {/* Filter Agent */}
-        <div className="flex items-center space-x-2 shrink-0">
-          <Filter className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Assignee:</span>
+
+        <div className="crm-filter-bar__select-wrap">
           <select
             value={filterAgent}
             onChange={(e) => setFilterAgent(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg bg-card border border-border focus:outline-none"
+            className="crm-filter-bar__select"
+            aria-label="Filter by assignee"
           >
-            <option value="ALL">All Agents</option>
+            <option value="ALL">All assigned</option>
             {staff.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
         </div>
 
-        {/* Sort options */}
-        <div className="flex items-center space-x-2 shrink-0">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-muted-foreground">Sort By:</span>
+        <div className="crm-filter-bar__select-wrap">
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortBy)}
-            className="px-2.5 py-1.5 rounded-lg bg-card border border-border focus:outline-none"
+            className="crm-filter-bar__select"
+            aria-label="Sort leads"
           >
-            <option value="date">Date Added</option>
-            <option value="value">Lead Value</option>
+            <option value="date">Sort: Date added</option>
+            <option value="value">Sort: Lead value</option>
           </select>
         </div>
 
-        {/* Layout */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto md:ml-0">
-          <LayoutGrid className="w-3.5 h-3.5 text-muted-foreground hidden sm:block shrink-0" aria-hidden />
-          <label htmlFor="lead-view-select" className="text-muted-foreground hidden sm:inline">
-            View
-          </label>
-          <select
-            id="lead-view-select"
-            value={leadView}
-            onChange={(e) => setLeadView(e.target.value as LeadViewMode)}
-            className="px-2.5 py-1.5 rounded-lg bg-card border border-border focus:outline-none min-w-[10.5rem] sm:min-w-[12rem]"
-            aria-label="Lead pipeline layout"
-          >
-            {LEAD_VIEW_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        <div className="crm-view-toggle" role="tablist" aria-label="Lead layout">
+          {LEAD_VIEW_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={leadView === opt.value}
+              className={`crm-view-toggle__btn ${leadView === opt.value ? 'crm-view-toggle__btn--active' : ''}`}
+              onClick={() => setLeadView(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1214,57 +1343,72 @@ export default function CRMPage() {
       {leadView === 'tiles' && agencyLeads.length === 0 && !isEmptyAgency && (
         <div className="rounded-xl border border-dashed border-border py-14 text-center text-[11px] text-muted-foreground">
           {hasActiveFilters
-            ? 'No leads match your filters. Try adjusting search or assignee.'
+            ? 'No leads match your filters. Try adjusting search, assignee, or date range.'
             : 'No leads in this view.'}
         </div>
       )}
 
       {leadView === 'list' && (
       /* List view */
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <CrmTablePanel>
+        <div className="crm-table-wrap">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs min-w-[720px]">
+          <table className="crm-data-table min-w-[720px]">
             <thead>
-              <tr className="border-b border-border bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="px-3 py-2.5 font-bold">Contact</th>
-                <th className="px-3 py-2.5 font-bold">Trip / goal</th>
-                <th className="px-3 py-2.5 font-bold w-[140px]">Stage</th>
-                <th className="px-3 py-2.5 font-bold whitespace-nowrap">Value</th>
-                <th className="px-3 py-2.5 font-bold">Assignee</th>
-                <th className="px-3 py-2.5 font-bold hidden lg:table-cell">Source</th>
-                <th className="px-3 py-2.5 font-bold whitespace-nowrap">Added</th>
+              <tr>
+                <th>Lead ID</th>
+                <th>Contact</th>
+                <th>Destination</th>
+                <th>Source</th>
+                <th className="w-[140px]">Status</th>
+                <th className="whitespace-nowrap">Budget</th>
+                <th>Assigned</th>
+                <th className="hidden lg:table-cell">Added</th>
               </tr>
             </thead>
             <tbody>
-              {agencyLeads.map((lead) => {
+              {leadsLoading ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-2">
+                    <CrmTableSkeleton columns={8} rows={8} />
+                  </td>
+                </tr>
+              ) : (
+              leadsTablePagination.pageItems.map((lead) => {
                 const assigneePerson = staff.find((u) => u.id === lead.assignedToId);
 
                 return (
                   <tr
                     key={lead.id}
                     onClick={() => selectLeadOpeningDrawer(lead.id)}
-                    className="border-b border-border/60 hover:bg-secondary/25 cursor-pointer transition-colors"
+                    className="cursor-pointer transition-colors"
                   >
-                    <td className="px-3 py-2.5 text-muted-foreground">
+                    <td className="crm-lead-id whitespace-nowrap">
+                      {formatLeadId(lead.id)}
+                    </td>
+                    <td>
                       <div className="font-medium text-foreground">
                         {lead.firstName} {lead.lastName}
                       </div>
                       {lead.email && (
-                        <div className="text-[10px] truncate max-w-[180px]" title={lead.email}>
+                        <div className="text-[10px] truncate max-w-[180px] text-muted-foreground" title={lead.email}>
                           {lead.email}
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 font-semibold text-foreground max-w-[200px]">
+                    <td className="font-medium text-foreground max-w-[200px]">
                       <span className="line-clamp-2">{lead.title}</span>
                     </td>
-                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <td className="text-muted-foreground">
+                      {lead.source || '—'}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <select
                         value={lead.status}
                         onChange={(e) =>
                           handleStatusChange(lead.id, e.target.value as Lead['status'])
                         }
-                        className="w-full max-w-[136px] px-2 py-1 rounded-md bg-secondary border border-border focus:outline-none focus:ring-1 focus:ring-primary text-[11px]"
+                        className="w-full max-w-[136px] px-2 py-1 rounded-full bg-secondary border border-border focus:outline-none focus:ring-1 focus:ring-primary text-[11px]"
                       >
                         {stages.map((st) => (
                           <option key={st.id} value={st.id}>
@@ -1272,37 +1416,45 @@ export default function CRMPage() {
                           </option>
                         ))}
                       </select>
-                      <div
-                        className={`mt-1 h-0.5 rounded-full opacity-70 ${STAGE_BAR[lead.status]}`}
-                        aria-hidden
-                      />
                     </td>
-                    <td className="px-3 py-2.5 font-semibold text-emerald-400 whitespace-nowrap">
+                    <td className="font-semibold whitespace-nowrap">
                       ₹{Number(lead.value).toLocaleString('en-IN')}
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">
+                    <td className="text-muted-foreground">
                       {assigneePerson ? assigneePerson.name : '—'}
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell">
-                      {lead.source || '—'}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                    <td className="text-muted-foreground whitespace-nowrap hidden lg:table-cell">
                       {new Date(lead.createdAt).toLocaleDateString()}
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
+        <CrmTablePagination
+          label="Leads"
+          rangeStart={leadsTablePagination.rangeStart}
+          rangeEnd={leadsTablePagination.rangeEnd}
+          total={leadsTablePagination.total}
+          page={leadsTablePagination.page}
+          totalPages={leadsTablePagination.totalPages}
+          hasPrev={leadsTablePagination.hasPrev}
+          hasNext={leadsTablePagination.hasNext}
+          onPrev={leadsTablePagination.goPrev}
+          onNext={leadsTablePagination.goNext}
+          backgroundLoading={leadsBackgroundLoading}
+        />
+        </div>
         {agencyLeads.length === 0 && !isEmptyAgency && (
-          <div className="py-14 text-center text-[11px] text-muted-foreground border-t border-border/60">
+          <div className="crm-data-table__empty border-t border-border/60">
             {hasActiveFilters
-              ? 'No leads match your filters. Try adjusting search or assignee.'
+              ? 'No leads match your filters. Try adjusting search, assignee, or date range.'
               : 'No leads in this view.'}
           </div>
         )}
-      </div>
+      </CrmTablePanel>
       )}
 
       {/* Add Lead Modal */}

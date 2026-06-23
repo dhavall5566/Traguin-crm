@@ -4,24 +4,17 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, bookingTravellerLabel } from '@/lib/store';
 import { useFinancePage } from '@/hooks/useFinancePage';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import { 
   Plus, 
   FileText, 
   X,
-  PieChart as ChartIcon,
   Trash2,
   Pencil,
 } from 'lucide-react';
-import { CrmChartTooltip } from '@/components/charts/CrmChartTooltip';
-import { 
-  ResponsiveContainer, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  Tooltip 
-} from 'recharts';
-
-const COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
 
 function generatePaymentTxnReference(): string {
   try {
@@ -51,6 +44,7 @@ export default function FinancePage() {
     customers,
     itineraries,
     loading,
+    backgroundLoading,
     error,
     addInvoice,
     recordPayment,
@@ -100,23 +94,16 @@ export default function FinancePage() {
   const agencyPayouts = vendorPayouts;
   const agencyBookings = bookings;
 
+  const invoicePagination = useClientPagination(agencyInvoices, undefined, [activeTab]);
+  const expensePagination = useClientPagination(agencyExpenses, undefined, [activeTab]);
+  const payoutPagination = useClientPagination(agencyPayouts, undefined, [activeTab]);
+
   // Totals
   const totalInvoiced = agencyInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0);
   const cashCollected = agencyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
   const totalExpenses = agencyExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
   const totalPayouts = agencyPayouts.reduce((sum, p) => sum + Number(p.amount), 0);
   const netProfit = cashCollected - totalExpenses;
-
-  // Expense breakdown for Chart
-  const expenseSummary = agencyExpenses.reduce((acc: Record<string, number>, exp) => {
-    acc[exp.category] = (acc[exp.category] || 0) + Number(exp.amount);
-    return acc;
-  }, {});
-
-  const chartData = Object.keys(expenseSummary).map((cat) => ({
-    name: cat,
-    value: expenseSummary[cat],
-  }));
 
   const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -252,9 +239,6 @@ export default function FinancePage() {
 
   return (
     <div className="space-y-6">
-      {loading ? (
-        <p className="text-xs text-muted-foreground">Loading finance data…</p>
-      ) : null}
       {error ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
@@ -348,58 +332,44 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Grid columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs items-start">
-        {/* Left pane: Logs tabs (2 columns) */}
-        <div className="lg:col-span-2 p-5 bg-card border border-border rounded-xl space-y-4">
-          <div className="flex justify-between items-center border-b border-border pb-3">
-            {/* Tabs triggers */}
-            <div className="flex space-x-1 bg-secondary/80 p-0.5 rounded-lg border border-border">
-              <button
-                onClick={() => setActiveTab('invoices')}
-                className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${activeTab === 'invoices' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Client Invoices
-              </button>
-              <button
-                onClick={() => setActiveTab('expenses')}
-                className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${activeTab === 'expenses' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Expense Log
-              </button>
-              <button
-                onClick={() => setActiveTab('payouts')}
-                className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${activeTab === 'payouts' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Vendor Payouts
-              </button>
-            </div>
-            
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-              {activeTab === 'invoices' && 'Accounts Receivable'}
-              {activeTab === 'expenses' && 'Accounts Payable'}
-              {activeTab === 'payouts' && 'Vendor Disbursements'}
-            </span>
-          </div>
+      {/* Finance tables — full width */}
+      <div className="text-xs">
+        <CrmTablePanel
+            tabs={[
+              { id: 'invoices', label: 'Client Invoices' },
+              { id: 'expenses', label: 'Expense Log' },
+              { id: 'payouts', label: 'Vendor Payouts' },
+            ]}
+            activeTab={activeTab}
+            onTabChange={(id) => setActiveTab(id as 'invoices' | 'expenses' | 'payouts')}
+          >
 
           {/* Tab 1: Invoices */}
           {activeTab === 'invoices' && (
+            <div className="crm-table-wrap">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="crm-data-table min-w-[800px]">
                 <thead>
-                  <tr className="border-b border-border/50 text-[10px] text-muted-foreground uppercase font-bold">
-                    <th className="pb-2">Invoice</th>
-                    <th className="pb-2">Booking</th>
-                    <th className="pb-2">Traveller</th>
-                    <th className="pb-2">Trip</th>
-                    <th className="pb-2">Amount</th>
-                    <th className="pb-2">Due</th>
-                    <th className="pb-2 text-center">Status</th>
-                    <th className="pb-2 text-right">Actions</th>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Booking</th>
+                    <th>Traveller</th>
+                    <th>Trip</th>
+                    <th>Amount</th>
+                    <th>Due</th>
+                    <th className="text-center">Status</th>
+                    <th className="text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/30">
-                  {agencyInvoices.map((inv) => {
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-3">
+                        <CrmTableSkeleton columns={8} rows={8} />
+                      </td>
+                    </tr>
+                  ) : (
+                  invoicePagination.pageItems.map((inv) => {
                     const booking = bookings.find((b) => b.id === inv.bookingId);
                     const travellerLabel =
                       booking != null ? bookingTravellerLabel(booking, customers) : '—';
@@ -419,26 +389,26 @@ export default function FinancePage() {
                           openDetail();
                         }
                       }}
-                      className="hover:bg-secondary/20 cursor-pointer border-b border-border/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+                      className="cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
                     >
-                      <td className="py-2.5 font-semibold text-foreground">
+                      <td className="font-semibold">
                         <div className="flex items-center space-x-2">
                           <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
                           <span>{inv.invoiceNumber}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 font-mono text-[10px] text-muted-foreground">
+                      <td className="font-mono text-[10px] text-muted-foreground">
                         {booking ? formatBookingRef(booking.id) : '—'}
                       </td>
-                      <td className="py-2.5 text-muted-foreground max-w-[120px]">
+                      <td className="text-muted-foreground max-w-[120px]">
                         {travellerLabel}
                       </td>
-                      <td className="py-2.5 text-muted-foreground max-w-[140px] truncate" title={trip?.title}>
+                      <td className="text-muted-foreground max-w-[140px] truncate" title={trip?.title}>
                         {trip?.title ?? '—'}
                       </td>
-                      <td className="py-2.5 font-bold">₹{Number(inv.amount).toLocaleString('en-IN')}</td>
-                      <td className="py-2.5 text-muted-foreground">{inv.dueDate}</td>
-                      <td className="py-2.5 text-center">
+                      <td className="font-bold">₹{Number(inv.amount).toLocaleString('en-IN')}</td>
+                      <td className="text-muted-foreground">{inv.dueDate}</td>
+                      <td className="text-center">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
                           inv.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-500' :
                           inv.status === 'PARTIALLY_PAID' ? 'bg-amber-500/10 text-amber-500' :
@@ -448,7 +418,7 @@ export default function FinancePage() {
                           {inv.status}
                         </span>
                       </td>
-                      <td className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="text-right" onClick={(e) => e.stopPropagation()}>
                         {inv.status !== 'PAID' ? (
                           <button
                             type="button"
@@ -469,46 +439,67 @@ export default function FinancePage() {
                       </td>
                     </tr>
                   );
-                  })}
-                  {agencyInvoices.length === 0 && (
+                  })
+                  )}
+                  {!loading && agencyInvoices.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-muted-foreground">No invoices recorded.</td>
+                      <td colSpan={8} className="crm-data-table__empty">No invoices recorded.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+            <CrmTablePagination
+              label="Invoices"
+              rangeStart={invoicePagination.rangeStart}
+              rangeEnd={invoicePagination.rangeEnd}
+              total={invoicePagination.total}
+              page={invoicePagination.page}
+              totalPages={invoicePagination.totalPages}
+              hasPrev={invoicePagination.hasPrev}
+              hasNext={invoicePagination.hasNext}
+              onPrev={invoicePagination.goPrev}
+              onNext={invoicePagination.goNext}
+              backgroundLoading={backgroundLoading}
+            />
+            </div>
           )}
 
           {/* Tab 2: Expenses */}
           {activeTab === 'expenses' && (
+            <div className="crm-table-wrap">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="crm-data-table min-w-[640px]">
                 <thead>
-                  <tr className="border-b border-border/50 text-[10px] text-muted-foreground uppercase font-bold">
-                    <th className="pb-2">Category</th>
-                    <th className="pb-2">Description</th>
-                    <th className="pb-2">Date Logged</th>
-                    <th className="pb-2 text-right">Debit Amount</th>
-                    <th className="pb-2 text-right w-16"> </th>
+                  <tr>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Date Logged</th>
+                    <th className="text-right">Debit Amount</th>
+                    <th className="text-right w-16"> </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/30">
-                  {agencyExpenses.map((exp) => (
-                    <tr key={exp.id} className="hover:bg-secondary/10">
-                      <td className="py-2.5 font-semibold text-foreground">
-                        <span className="px-2 py-0.5 rounded bg-pink-500/10 text-pink-500 text-[9px] font-bold uppercase">
-                          {exp.category}
-                        </span>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="py-3">
+                        <CrmTableSkeleton columns={5} rows={8} />
                       </td>
-                      <td className="py-2.5 text-muted-foreground">{exp.description || 'General expense'}</td>
-                      <td className="py-2.5 text-muted-foreground">
+                    </tr>
+                  ) : (
+                  expensePagination.pageItems.map((exp) => (
+                    <tr key={exp.id}>
+                      <td className="font-semibold">
+                        <span className="crm-table-badge">{exp.category}</span>
+                      </td>
+                      <td className="text-muted-foreground">{exp.description || 'General expense'}</td>
+                      <td className="text-muted-foreground">
                         {new Date(exp.expenseDate).toLocaleDateString()}
                       </td>
-                      <td className="py-2.5 text-right font-bold text-pink-500">
+                      <td className="text-right font-bold text-pink-500">
                         -₹{Number(exp.amount).toLocaleString('en-IN')}
                       </td>
-                      <td className="py-2.5 text-right">
+                      <td className="text-right">
                         <div className="flex justify-end gap-1">
                           <button
                             type="button"
@@ -529,51 +520,77 @@ export default function FinancePage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {agencyExpenses.length === 0 && (
+                  ))
+                  )}
+                  {!loading && agencyExpenses.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="py-6 text-center text-muted-foreground">No business expenses logged.</td>
+                      <td colSpan={5} className="crm-data-table__empty">No business expenses logged.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+            <CrmTablePagination
+              label="Expenses"
+              rangeStart={expensePagination.rangeStart}
+              rangeEnd={expensePagination.rangeEnd}
+              total={expensePagination.total}
+              page={expensePagination.page}
+              totalPages={expensePagination.totalPages}
+              hasPrev={expensePagination.hasPrev}
+              hasNext={expensePagination.hasNext}
+              onPrev={expensePagination.goPrev}
+              onNext={expensePagination.goNext}
+              backgroundLoading={backgroundLoading}
+            />
+            </div>
           )}
 
           {/* Tab 3: Vendor Payouts */}
           {activeTab === 'payouts' && (
+            <div className="crm-table-wrap">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="crm-data-table min-w-[480px]">
                 <thead>
-                  <tr className="border-b border-border/50 text-[10px] text-muted-foreground uppercase font-bold">
-                    <th className="pb-2">Disbursement Vendor</th>
-                    <th className="pb-2">Payout Date</th>
-                    <th className="pb-2 text-right">Debit Price</th>
+                  <tr>
+                    <th>Disbursement Vendor</th>
+                    <th>Payout Date</th>
+                    <th className="text-right">Debit Price</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/30">
-                  {agencyPayouts.map((pout) => {
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={3} className="py-3">
+                        <CrmTableSkeleton columns={3} rows={8} />
+                      </td>
+                    </tr>
+                  ) : (
+                  payoutPagination.pageItems.map((pout) => {
                     const vendor = vendors.find(v => v.id === pout.vendorId);
                     return (
-                      <tr key={pout.id} className="hover:bg-secondary/10">
-                        <td className="py-2.5 font-semibold text-foreground flex items-center space-x-2">
+                      <tr key={pout.id}>
+                        <td className="font-semibold">
+                          <div className="flex items-center gap-2">
                           <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-[10px]">
                             {vendor?.name.charAt(0) || 'V'}
                           </div>
                           <span>{vendor?.name || 'Partner Provider'}</span>
+                          </div>
                         </td>
-                        <td className="py-2.5 text-muted-foreground">
+                        <td className="text-muted-foreground">
                           {new Date(pout.paymentDate).toLocaleDateString()}
                         </td>
-                        <td className="py-2.5 text-right font-bold text-indigo-400">
+                        <td className="text-right font-bold text-indigo-400">
                           -₹{Number(pout.amount).toLocaleString('en-IN')}
                         </td>
                       </tr>
                     );
-                  })}
-                  {agencyPayouts.length === 0 && (
+                  })
+                  )}
+                  {!loading && agencyPayouts.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="py-6 text-center text-muted-foreground">
+                      <td colSpan={3} className="crm-data-table__empty">
                         No vendor payouts recorded. Disburse payouts from the Vendors page.
                       </td>
                     </tr>
@@ -581,57 +598,22 @@ export default function FinancePage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-
-        {/* Right pane: Expense breakdown graph (1 column) */}
-        <div className="p-5 bg-card border border-border rounded-xl space-y-4">
-          <div className="flex justify-between items-center border-b border-border pb-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Expenses Allocation Chart</h2>
-            <ChartIcon className="w-4 h-4 text-primary shrink-0" />
-          </div>
-          
-          <div className="h-44 relative flex items-center justify-center">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={65}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CrmChartTooltip format="currency" />} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <span className="text-muted-foreground/60 italic">No charts coordinates.</span>
-            )}
-            <div className="absolute flex flex-col items-center">
-              <span className="text-lg font-bold">₹{totalExpenses.toLocaleString('en-IN')}</span>
-              <span className="text-[8px] text-muted-foreground uppercase font-bold tracking-wider">Debit Total</span>
+            <CrmTablePagination
+              label="Vendor payouts"
+              rangeStart={payoutPagination.rangeStart}
+              rangeEnd={payoutPagination.rangeEnd}
+              total={payoutPagination.total}
+              page={payoutPagination.page}
+              totalPages={payoutPagination.totalPages}
+              hasPrev={payoutPagination.hasPrev}
+              hasNext={payoutPagination.hasNext}
+              onPrev={payoutPagination.goPrev}
+              onNext={payoutPagination.goNext}
+              backgroundLoading={backgroundLoading}
+            />
             </div>
-          </div>
-
-          <div className="space-y-1.5 text-[10px]">
-            {chartData.map((item, idx) => (
-              <div key={idx} className="flex justify-between items-center p-1 rounded bg-secondary/20">
-                <div className="flex items-center space-x-1.5">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                  <span className="font-medium uppercase">{item.name}</span>
-                </div>
-                <span className="font-bold text-foreground">₹{item.value.toLocaleString('en-IN')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+          )}
+          </CrmTablePanel>
       </div>
 
       {/* Invoice detail: details + record receipt (left) · payment log (right) */}

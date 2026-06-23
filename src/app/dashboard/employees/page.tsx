@@ -3,6 +3,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { RBAC_MODULE_DEFS } from '@/lib/rbac';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { useAgencyUsers } from '@/hooks/useAgencyUsers';
+import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import {
   Search,
   ShieldCheck,
@@ -13,7 +18,9 @@ import {
 const CRUD_PERM = ['view', 'create', 'edit', 'delete'] as const;
 
 export default function EmployeesPage() {
-  const { users, currentAgency, auditLogs, logAction, roleDefinitions } = useStore();
+  const { currentAgency, logAction, roleDefinitions } = useStore();
+  const { users } = useAgencyUsers();
+  const { auditLogs } = useAuditLogFeed();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedRoleMatrixId, setSelectedRoleMatrixId] = useState('');
@@ -58,6 +65,7 @@ export default function EmployeesPage() {
   const activeUser = agencyUsers.find((u) => u.id === selectedUserId);
   const agencyAuditLogs = auditLogs.filter((log) => log.agencyId === currentAgency.id);
   const matrixRole = agencyRoleDefs.find((r) => r.id === selectedRoleMatrixId);
+  const rbacRowsPagination = useClientPagination([...RBAC_MODULE_DEFS], undefined, [selectedRoleMatrixId]);
 
   const handleRoleChange = (userId: string, newRoleName: string) => {
     const userToUpdate = users.find((u) => u.id === userId);
@@ -200,25 +208,27 @@ export default function EmployeesPage() {
                     ? ' Matches the highlighted staff row.'
                     : ` Inspecting "${matrixRole.name}" — ${activeUser ? `${activeUser.name} is assigned as ${activeUser.role}.` : ''}`}
                 </p>
+                <CrmTablePanel>
+                <div className="crm-table-wrap">
                 <div className="overflow-x-auto text-[11px]">
-                  <table className="w-full text-left">
+                  <table className="crm-data-table">
                     <thead>
-                      <tr className="border-b border-border text-[9px] text-muted-foreground uppercase font-bold">
-                        <th className="pb-2">Workspace Module</th>
-                        <th className="pb-2 text-center">View</th>
-                        <th className="pb-2 text-center">Create</th>
-                        <th className="pb-2 text-center">Edit</th>
-                        <th className="pb-2 text-center">Delete</th>
+                      <tr>
+                        <th>Workspace Module</th>
+                        <th className="text-center">View</th>
+                        <th className="text-center">Create</th>
+                        <th className="text-center">Edit</th>
+                        <th className="text-center">Delete</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/30">
-                      {RBAC_MODULE_DEFS.map(({ key, label }) => {
+                    <tbody>
+                      {rbacRowsPagination.pageItems.map(({ key, label }) => {
                         const row = matrixRole.permissions[key];
                         return (
-                          <tr key={key} className="hover:bg-secondary/10">
-                            <td className="py-2.5 font-medium text-foreground">{label}</td>
+                          <tr key={key}>
+                            <td className="font-medium">{label}</td>
                             {CRUD_PERM.map((p) => (
-                              <td key={p} className="py-2.5 text-center">
+                              <td key={p} className="text-center">
                                 {row[p] ? (
                                   <Check className="w-4 h-4 text-emerald-500 mx-auto" />
                                 ) : (
@@ -232,6 +242,20 @@ export default function EmployeesPage() {
                     </tbody>
                   </table>
                 </div>
+                <CrmTablePagination
+                  label="RBAC modules"
+                  rangeStart={rbacRowsPagination.rangeStart}
+                  rangeEnd={rbacRowsPagination.rangeEnd}
+                  total={rbacRowsPagination.total}
+                  page={rbacRowsPagination.page}
+                  totalPages={rbacRowsPagination.totalPages}
+                  hasPrev={rbacRowsPagination.hasPrev}
+                  hasNext={rbacRowsPagination.hasNext}
+                  onPrev={rbacRowsPagination.goPrev}
+                  onNext={rbacRowsPagination.goNext}
+                />
+                </div>
+                </CrmTablePanel>
 
                 <div className="p-3 rounded-lg bg-indigo-950/20 border border-indigo-900/30 text-[10px] text-indigo-300 flex items-center space-x-2">
                   <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-400" />

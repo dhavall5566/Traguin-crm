@@ -1,8 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useStore, Customer } from '@/lib/store';
 import { useCustomersPage } from '@/hooks/useCustomersPage';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import { isEmailConflictError } from '@/lib/api/customers';
 import { 
   Users,
@@ -22,6 +27,7 @@ export default function CustomersPage() {
   const {
     customers,
     loading,
+    backgroundLoading,
     error: loadError,
     addCustomer,
     updateCustomer,
@@ -30,6 +36,8 @@ export default function CustomersPage() {
   } = useCustomersPage();
 
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search);
+  const [customerSegment, setCustomerSegment] = useState<'direct' | 'b2b'>('direct');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -49,13 +57,16 @@ export default function CustomersPage() {
   const [docCategory, setDocCategory] = useState('Passport');
   const [docUploaded, setDocUploaded] = useState(false);
 
-  const agencyCustomers = customers.filter(
-    (c) =>
-      c.agencyId === currentAgency.id &&
-      (c.firstName + ' ' + c.lastName + ' ' + c.email)
-        .toLowerCase()
-        .includes(search.toLowerCase())
-  );
+  const agencyCustomers = useMemo(() => {
+    const q = debouncedSearch.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.agencyId === currentAgency.id &&
+        (c.firstName + ' ' + c.lastName + ' ' + c.email).toLowerCase().includes(q),
+    );
+  }, [customers, currentAgency.id, debouncedSearch]);
+
+  const customersPagination = useClientPagination(agencyCustomers, undefined, [debouncedSearch]);
 
   const isEmptyAgency = !loading && !loadError && customers.length === 0;
   const hasSearchFilter = search.trim().length > 0;
@@ -196,7 +207,7 @@ export default function CustomersPage() {
         </button>
       </div>
 
-      {loading && (
+      {loading && isEmptyAgency && (
         <div className="rounded-xl border border-border bg-card/60 px-4 py-8 text-center text-xs text-muted-foreground">
           Loading customer directory…
         </div>
@@ -240,38 +251,62 @@ export default function CustomersPage() {
       {/* Customers Table / Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Side: Customers list table */}
-        <div className="lg:col-span-2 p-5 bg-card border border-border rounded-xl space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Active Customer Registry</h2>
+        <div className="lg:col-span-2">
+          <CrmTablePanel
+            tabs={[
+              { id: 'direct', label: 'Direct Customers' },
+              { id: 'b2b', label: 'B2B Clients' },
+            ]}
+            activeTab={customerSegment}
+            onTabChange={(id) => setCustomerSegment(id as 'direct' | 'b2b')}
+          >
+          <div className="crm-table-wrap">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="crm-data-table min-w-[640px]">
               <thead>
-                <tr className="border-b border-border/50 text-[10px] text-muted-foreground uppercase font-bold">
-                  <th className="pb-2">Customer Profile</th>
-                  <th className="pb-2">Email</th>
-                  <th className="pb-2">Phone</th>
-                  <th className="pb-2">Passport No.</th>
-                  <th className="pb-2 text-right">Actions</th>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Passport No.</th>
+                  <th>Type</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/30">
-                {agencyCustomers.map((cust) => {
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="py-3">
+                      <CrmTableSkeleton columns={6} rows={8} />
+                    </td>
+                  </tr>
+                ) : customerSegment === 'b2b' ? (
+                  <tr>
+                    <td colSpan={6} className="crm-data-table__empty">
+                      No B2B client accounts yet.
+                    </td>
+                  </tr>
+                ) : (
+                customersPagination.pageItems.map((cust) => {
                   const expired = isPassportExpired(cust.passportExpiry);
                   
                   return (
                     <tr 
                       key={cust.id} 
                       onClick={() => setSelectedCustomer(cust)}
-                      className={`hover:bg-secondary/20 cursor-pointer ${selectedCustomer?.id === cust.id ? 'bg-primary/5' : ''}`}
+                      className={`cursor-pointer ${selectedCustomer?.id === cust.id ? 'crm-data-table__row--selected' : ''}`}
                     >
-                      <td className="py-3 font-semibold text-foreground flex items-center space-x-2">
+                      <td className="font-semibold">
+                        <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                           {cust.firstName.charAt(0)}{cust.lastName.charAt(0)}
                         </div>
                         <span>{cust.firstName} {cust.lastName}</span>
+                        </div>
                       </td>
-                      <td className="py-3 text-muted-foreground">{cust.email}</td>
-                      <td className="py-3 text-muted-foreground">{cust.phone || 'None'}</td>
-                      <td className="py-3 font-mono">
+                      <td className="text-muted-foreground">{cust.email}</td>
+                      <td className="text-muted-foreground">{cust.phone || 'None'}</td>
+                      <td className="font-mono">
                         {cust.passportNumber ? (
                           <span className={`inline-flex items-center space-x-1 ${expired ? 'text-red-400 font-bold' : ''}`}>
                             <span>{cust.passportNumber}</span>
@@ -285,7 +320,10 @@ export default function CustomersPage() {
                           <span className="text-muted-foreground/40 italic">Not set</span>
                         )}
                       </td>
-                      <td className="py-3 text-right">
+                      <td>
+                        <span className="crm-table-badge">Direct</span>
+                      </td>
+                      <td className="text-right">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
@@ -298,10 +336,11 @@ export default function CustomersPage() {
                       </td>
                     </tr>
                   );
-                })}
-                {agencyCustomers.length === 0 && (
+                })
+                )}
+                {!loading && customerSegment === 'direct' && agencyCustomers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="crm-data-table__empty">
                       {isEmptyAgency
                         ? 'No customer profiles yet.'
                         : hasSearchFilter
@@ -313,6 +352,21 @@ export default function CustomersPage() {
               </tbody>
             </table>
           </div>
+          <CrmTablePagination
+            label="Customers"
+            rangeStart={customersPagination.rangeStart}
+            rangeEnd={customersPagination.rangeEnd}
+            total={customersPagination.total}
+            page={customersPagination.page}
+            totalPages={customersPagination.totalPages}
+            hasPrev={customersPagination.hasPrev}
+            hasNext={customersPagination.hasNext}
+            onPrev={customersPagination.goPrev}
+            onNext={customersPagination.goNext}
+            backgroundLoading={backgroundLoading}
+          />
+          </div>
+          </CrmTablePanel>
         </div>
 
         {/* Right Side: Documents & Details Panel */}

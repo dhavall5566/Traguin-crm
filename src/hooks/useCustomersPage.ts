@@ -1,53 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import {
   appendCustomerDocument,
   createCustomer,
   deleteCustomer as deleteCustomerApi,
+  listCustomers,
   mapCustomerFromApi,
   updateCustomer as updateCustomerApi,
   type CustomerCreateInput,
   type CustomerUpdateInput,
 } from "@/lib/api/customers";
-import { CRM_API_DEFAULT_PAGE_SIZE } from "@/lib/api/pagination";
+import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
+import {
+  CRM_CACHE,
+  patchCrmWorkspaceItem,
+  prependCrmWorkspaceItem,
+  removeCrmWorkspaceItem,
+} from "@/lib/api/crm-workspace-store";
+import { bindCrmListFetch } from "@/lib/api/pagination";
+import { useProgressiveCrmList } from "@/hooks/useProgressiveCrmList";
 import type { Customer } from "@/lib/store";
 
 export function useCustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refreshCustomers = useCallback(async () => {
-    setError(null);
-    const { listCustomers } = await import("@/lib/api/customers");
-    const data = await listCustomers({ limit: CRM_API_DEFAULT_PAGE_SIZE });
-    setCustomers(data.items.map(mapCustomerFromApi));
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const { listCustomers } = await import("@/lib/api/customers");
-        const data = await listCustomers({ limit: CRM_API_DEFAULT_PAGE_SIZE });
-        if (!cancelled) {
-          setCustomers(data.items.map(mapCustomerFromApi));
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load customers");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const {
+    items: customers,
+    setItems: setCustomers,
+    total,
+    loading,
+    backgroundLoading,
+    error,
+    refresh,
+    invalidate,
+  } = useProgressiveCrmList({
+    cachePrefix: CRM_CACHE.customers,
+    fetchPage: bindCrmListFetch(listCustomers),
+    mapItem: mapCustomerFromApi,
+  });
 
   const replaceCustomerInState = useCallback((apiCustomer: Parameters<typeof mapCustomerFromApi>[0]) => {
     const record = mapCustomerFromApi(apiCustomer);
@@ -59,11 +48,12 @@ export function useCustomersPage() {
       return next;
     });
     return record;
-  }, []);
+  }, [setCustomers]);
 
   const addCustomer = useCallback(
     async (input: CustomerCreateInput) => {
       const apiCustomer = await createCustomer(input);
+      invalidateCrmListCache(CRM_CACHE.customers);
       return replaceCustomerInState(apiCustomer);
     },
     [replaceCustomerInState],
@@ -71,10 +61,29 @@ export function useCustomersPage() {
 
   const updateCustomer = useCallback(
     async (customerId: string, updates: CustomerUpdateInput) => {
-      const apiCustomer = await updateCustomerApi(customerId, updates);
-      return replaceCustomerInState(apiCustomer);
+      const snapshot = customers.find((c) => c.id === customerId);
+      if (snapshot) {
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === customerId ? { ...c, ...updates } : c)),
+        );
+        patchCrmWorkspaceItem(CRM_CACHE.customers, customerId, updates);
+      }
+
+      try {
+        const apiCustomer = await updateCustomerApi(customerId, updates);
+        invalidateCrmListCache(CRM_CACHE.customers);
+        return replaceCustomerInState(apiCustomer);
+      } catch (error) {
+        if (snapshot) {
+          setCustomers((prev) =>
+            prev.map((c) => (c.id === customerId ? snapshot : c)),
+          );
+          patchCrmWorkspaceItem(CRM_CACHE.customers, customerId, snapshot);
+        }
+        throw error;
+      }
     },
-    [replaceCustomerInState],
+    [customers, replaceCustomerInState, setCustomers],
   );
 
   const uploadCustomerDoc = useCallback(
@@ -86,13 +95,31 @@ export function useCustomersPage() {
   );
 
   const deleteCustomer = useCallback(async (customerId: string) => {
-    await deleteCustomerApi(customerId);
+    const snapshot = customers.find((c) => c.id === customerId);
     setCustomers((prev) => prev.filter((c) => c.id !== customerId));
-  }, []);
+    removeCrmWorkspaceItem(CRM_CACHE.customers, customerId);
+
+    try {
+      await deleteCustomerApi(customerId);
+      invalidateCrmListCache(CRM_CACHE.customers);
+    } catch (error) {
+      if (snapshot) {
+        setCustomers((prev) => [snapshot, ...prev]);
+        prependCrmWorkspaceItem(CRM_CACHE.customers, snapshot);
+      }
+      throw error;
+    }
+  }, [customers, setCustomers]);
+
+  const refreshCustomers = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
 
   return {
     customers,
+    total,
     loading,
+    backgroundLoading,
     error,
     refreshCustomers,
     addCustomer,

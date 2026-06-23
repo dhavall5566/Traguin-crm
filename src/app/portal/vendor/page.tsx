@@ -46,17 +46,8 @@ export default function VendorPortal() {
   const [newRateType, setNewRateType] = useState('HOTEL');
   const [newRatePrice, setNewRatePrice] = useState('');
   
-  // Simulated Availability State (day-by-day room/service quotas)
-  const [availability, setAvailability] = useState<{ [date: string]: number }>({
-    '2026-05-23': 8,
-    '2026-05-24': 8,
-    '2026-05-25': 5,
-    '2026-05-26': 12,
-    '2026-05-27': 15,
-    '2026-05-28': 3,
-    '2026-05-29': 0,
-    '2026-05-30': 4,
-  });
+  // Availability quotas keyed by date (populated from API when integrated).
+  const [availability, setAvailability] = useState<{ [date: string]: number }>({});
 
   // Action notifications
   const [actionSuccess, setActionSuccess] = useState('');

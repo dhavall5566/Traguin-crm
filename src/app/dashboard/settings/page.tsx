@@ -11,6 +11,9 @@ import {
   type RoleDefinition,
   type RbacModuleKey,
 } from '@/lib/rbac';
+import { useClientPagination } from '@/hooks/useClientPagination';
+import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
+import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
 import {
   Bell,
   Download,
@@ -88,6 +91,7 @@ export default function SettingsPage() {
   }, [roleDefinitions, currentAgency.id]);
 
   const selectedRole: RoleDefinition | undefined = agencyRoles.find((r) => r.id === selectedRoleId);
+  const rbacRowsPagination = useClientPagination([...RBAC_MODULE_DEFS], undefined, [selectedRoleId]);
 
   useEffect(() => {
     if (agencyRoles.length === 0) {
@@ -452,26 +456,28 @@ export default function SettingsPage() {
 
         {selectedRole && (
           <>
+            <CrmTablePanel>
+            <div className="crm-table-wrap">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-[11px]">
+              <table className="crm-data-table">
                 <thead>
-                  <tr className="border-b border-border text-[9px] text-muted-foreground uppercase font-bold">
-                    <th className="pb-2 pr-4">Workspace module</th>
+                  <tr>
+                    <th>Workspace module</th>
                     {CRUD_COLUMNS.map((c) => (
-                      <th key={c.key} className="pb-2 text-center w-[72px]">
+                      <th key={c.key} className="text-center w-[72px]">
                         {c.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/40">
-                  {RBAC_MODULE_DEFS.map(({ key: modKey, label }) => (
+                <tbody>
+                  {rbacRowsPagination.pageItems.map(({ key: modKey, label }) => (
                     <tr key={modKey}>
-                      <td className="py-2 font-medium text-foreground pr-4">{label}</td>
+                      <td className="font-medium pr-4">{label}</td>
                       {CRUD_COLUMNS.map(({ key: permKey }) => {
                         const on = selectedRole.permissions[modKey][permKey];
                         return (
-                          <td key={`${modKey}-${String(permKey)}`} className="py-2 text-center">
+                          <td key={`${modKey}-${String(permKey)}`} className="text-center">
                             {canEditRolesMatrix ? (
                               <button
                                 type="button"
@@ -507,6 +513,20 @@ export default function SettingsPage() {
                 </tbody>
               </table>
             </div>
+            <CrmTablePagination
+              label="Permission modules"
+              rangeStart={rbacRowsPagination.rangeStart}
+              rangeEnd={rbacRowsPagination.rangeEnd}
+              total={rbacRowsPagination.total}
+              page={rbacRowsPagination.page}
+              totalPages={rbacRowsPagination.totalPages}
+              hasPrev={rbacRowsPagination.hasPrev}
+              hasNext={rbacRowsPagination.hasNext}
+              onPrev={rbacRowsPagination.goPrev}
+              onNext={rbacRowsPagination.goNext}
+            />
+            </div>
+            </CrmTablePanel>
 
             <div className="p-3 rounded-lg bg-indigo-950/20 border border-indigo-900/30 text-[10px] text-indigo-300 flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" />

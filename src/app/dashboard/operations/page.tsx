@@ -55,7 +55,7 @@ export default function OperationsPage() {
   const weekStart = useMemo(() => startOfIsoWeek(cursor), [cursor]);
   const weekEndDisplay = useMemo(() => addDays(weekStart, 6), [weekStart]);
 
-  const { loading, error, users, calendarEvents, untouched24, proposals7 } = useOperationsPage(
+  const { loading, backgroundLoading, error, users, calendarEvents, untouched24, proposals7 } = useOperationsPage(
     weekStart,
     slaNow,
   );
@@ -210,16 +210,30 @@ export default function OperationsPage() {
     );
   }
 
-  if (loading) {
+  if (loading && calendarEvents.length === 0 && !error) {
     return (
-      <div className="flex h-[70vh] items-center justify-center">
-        <span className="text-xs text-muted-foreground">Loading operations…</span>
+      <div className="space-y-8">
+        <div className="flex flex-col sm:flex-row justify-between gap-4 border-b border-border/50 pb-4">
+          <div>
+            <h1 className="crm-page-title">Weekly Ops Hub</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Loading this week&apos;s schedule…</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card/40 min-h-[8rem] animate-pulse" />
+          ))}
+        </div>
+        <div className="rounded-xl border border-border bg-card/40 min-h-[20rem] animate-pulse" />
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
+      {backgroundLoading ? (
+        <p className="text-[11px] text-muted-foreground">Syncing latest operations data…</p>
+      ) : null}
       {error ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
