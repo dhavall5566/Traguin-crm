@@ -11,7 +11,7 @@ import {
   type StuckProposalLeadRow,
   type UntouchedStaleLeadRow,
 } from '@/lib/weekly-ops-logic';
-import type { Lead, User } from '@/lib/store';
+import type { User } from '@/lib/store';
 import {
   AlarmClock,
   CalendarCheck2,

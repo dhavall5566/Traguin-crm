@@ -77,7 +77,7 @@ export default function EmployeesPage() {
   const [editPassword, setEditPassword] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const [, setDeletingUserId] = useState<string | null>(null);
 
   const allAgencyUsers = useMemo(
     () => users.filter((u) => u.agencyId === currentAgency.id),

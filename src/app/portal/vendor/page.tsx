@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useStore, Vendor, Booking, Itinerary } from '@/lib/store';
+import { useStore } from '@/lib/store';
+import type { LucideIcon } from 'lucide-react';
 import { 
   Building,
   DollarSign, 
@@ -12,23 +13,20 @@ import {
   Upload, 
   Plus, 
   Trash2, 
-  Save, 
   FileText, 
   Activity, 
   Truck, 
   Plane, 
   Hotel,
   ShieldAlert,
-  ArrowUpRight,
   TrendingUp,
-  User,
   Coffee,
   Check
 } from 'lucide-react';
 import Link from 'next/link';
 
 // Map icon types for representation
-const vendorIconMap = {
+const vendorIconMap: Record<string, LucideIcon> = {
   HOTEL: Hotel,
   FLIGHT: Plane,
   TRANSFER: Truck,
@@ -531,7 +529,7 @@ export default function VendorPortal() {
               <div className="space-y-2">
                 {activeVendor.rates.map((rate, index) => {
                   // Type icon lookup
-                  const RateIcon = (vendorIconMap as any)[rate.type] || FileText;
+                  const RateIcon = vendorIconMap[rate.type] ?? FileText;
 
                   return (
                     <div key={index} className="flex justify-between items-center p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-850">

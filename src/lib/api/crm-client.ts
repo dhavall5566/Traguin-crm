@@ -48,7 +48,7 @@ export function mapApiUser(user: ApiUser, role = "Agency Admin"): User {
   };
 }
 
-export async function crmFetch<T>(
+export async function crmFetch(
   path: string,
   init?: RequestInit & { redirectOn401?: boolean },
 ): Promise<Response> {

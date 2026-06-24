@@ -91,7 +91,6 @@ export function useLeadsPage() {
   const [backgroundLoading, setBackgroundLoading] = useState(false);
   const [hydratingLeadId, setHydratingLeadId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [extrasMap, setExtrasMap] = useState<Record<string, LeadExtras>>({});
   const hydratedLeadIdsRef = useRef<Set<string>>(new Set());
   const userNameByIdRef = useRef<Record<string, string>>({});
   const leadMutationLockRef = useRef<Set<string>>(new Set());
@@ -99,20 +98,10 @@ export function useLeadsPage() {
   const userNameById = useMemo(() => userNameMap(staff), [staff]);
   userNameByIdRef.current = userNameById;
 
-  const mapLeadItems = useCallback(
-    (
-      items: Awaited<ReturnType<typeof listLeads>>["items"],
-      names: Record<string, string>,
-      extras: Record<string, LeadExtras>,
-    ) => items.map((item) => applyLeadRecord(item, names, extras)),
-    [],
-  );
-
   const refreshLeads = useCallback(async () => {
     setError(null);
     invalidateCrmListCache(CRM_CACHE.leads);
     const extras = loadLeadExtras();
-    setExtrasMap(extras);
     hydratedLeadIdsRef.current.clear();
     const hasVisible = (getCrmWorkspaceList<LeadRecord>(CRM_CACHE.leads)?.items.length ?? 0) > 0;
     if (hasVisible) {
@@ -162,7 +151,6 @@ export function useLeadsPage() {
         if (cancelled) return;
 
         setStaff(users);
-        setExtrasMap(extras);
         hydratedLeadIdsRef.current.clear();
         const names = userNameMap(users);
         userNameByIdRef.current = names;
@@ -205,7 +193,6 @@ export function useLeadsPage() {
   const replaceLeadInState = useCallback(
     (apiLead: Parameters<typeof applyLeadRecord>[0]) => {
       const extras = loadLeadExtras();
-      setExtrasMap(extras);
       const record = applyLeadRecord(apiLead, userNameByIdRef.current, extras);
       hydratedLeadIdsRef.current.add(record.id);
       setLeads((prev) => {
@@ -239,7 +226,6 @@ export function useLeadsPage() {
   const updateLeadExtras = useCallback(
     (leadId: string, patch: LeadExtras) => {
       const next = mergeLeadExtras(leadId, patch);
-      setExtrasMap(next);
       setLeads((prev) =>
         prev.map((l) =>
           l.id === leadId
@@ -263,7 +249,8 @@ export function useLeadsPage() {
       }
       leadMutationLockRef.current.add(lockKey);
       try {
-        const { customerId: _ignored, ...createInput } = input;
+        const { customerId, ...createInput } = input;
+        void customerId;
         const apiLead = await createLead(createInput, {
           initialActivity: {
             type: "NOTE",

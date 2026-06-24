@@ -23,7 +23,7 @@ export async function syncAgencyRoleCatalog(agencyId: string): Promise<RoleDefin
 
   const apiRoles = await listAgencyRoles();
   const stateBefore = useStore.getState();
-  let roleDefinitions = [...stateBefore.roleDefinitions];
+  const roleDefinitions = [...stateBefore.roleDefinitions];
 
   for (const apiRole of apiRoles) {
     const exists = roleDefinitions.some(

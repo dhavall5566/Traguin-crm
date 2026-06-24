@@ -20,7 +20,6 @@ import {
 } from "@/lib/api/crm-workspace-store";
 import { bindCrmListFetch } from "@/lib/api/pagination";
 import { useProgressiveCrmList } from "@/hooks/useProgressiveCrmList";
-import type { Customer } from "@/lib/store";
 
 export function useCustomersPage() {
   const {
@@ -31,7 +30,6 @@ export function useCustomersPage() {
     backgroundLoading,
     error,
     refresh,
-    invalidate,
   } = useProgressiveCrmList({
     cachePrefix: CRM_CACHE.customers,
     fetchPage: bindCrmListFetch(listCustomers),

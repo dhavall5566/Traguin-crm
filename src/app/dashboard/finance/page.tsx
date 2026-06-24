@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useStore, bookingTravellerLabel } from '@/lib/store';
+import { bookingTravellerLabel } from '@/lib/store';
 import { useFinancePage } from '@/hooks/useFinancePage';
 import { useClientPagination } from '@/hooks/useClientPagination';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
