@@ -10,6 +10,8 @@ export type CrmItineraryCreationIntent = {
   customerId: string;
   /** From CRM “Lead Goal / Destination Title” (`Lead.title`) at handoff time */
   leadGoalTitle: string;
+  /** Customer inquiry text (`Lead.message`) — prefills AI itinerary title */
+  leadMessage: string;
 };
 
 /** Safe parse — used when React state/ref may reset (Strict Mode) but session keys must survive. */
@@ -26,6 +28,8 @@ export function readCrmItineraryCreationIntentFromStorage(): CrmItineraryCreatio
       customerId: typeof parsed.customerId === 'string' ? parsed.customerId.trim() : '',
       leadGoalTitle:
         typeof parsed.leadGoalTitle === 'string' ? parsed.leadGoalTitle.trim() : '',
+      leadMessage:
+        typeof parsed.leadMessage === 'string' ? parsed.leadMessage.trim() : '',
     };
   } catch {
     return null;

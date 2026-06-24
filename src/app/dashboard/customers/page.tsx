@@ -214,7 +214,7 @@ export default function CustomersPage() {
       )}
 
       {loadError && !loading && (
-        <div className="rounded-xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-xs text-red-300">
+        <div className="crm-alert-error text-xs">
           Could not load customers: {loadError}
         </div>
       )}
@@ -237,15 +237,17 @@ export default function CustomersPage() {
       )}
 
       {/* Filter Controls */}
-      <div className="relative text-xs">
-        <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
-        <input
-          type="text"
-          placeholder="Filter customers by name or email address..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-card border border-border focus:border-primary focus:outline-none"
-        />
+      <div className="crm-filter-bar text-xs">
+        <div className="crm-filter-bar__search">
+          <Search className="crm-filter-bar__search-icon" />
+          <input
+            type="text"
+            placeholder="Filter customers by name or email address..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="crm-filter-bar__input"
+          />
+        </div>
       </div>
 
       {/* Customers Table / Grid */}
@@ -399,7 +401,7 @@ export default function CustomersPage() {
                 <button
                   type="button"
                   onClick={handleDeleteCustomer}
-                  className="py-1.5 px-3 rounded-lg border border-red-900/40 bg-red-950/20 text-red-400 text-[10px] font-semibold hover:bg-red-950/40 flex items-center gap-1"
+                  className="crm-btn-danger crm-btn-danger--compact"
                 >
                   <Trash2 className="w-3 h-3" />
                   Remove
@@ -541,7 +543,7 @@ export default function CustomersPage() {
             </div>
 
             {formError && (
-              <div className="p-3 rounded-lg bg-red-950/40 border border-red-900/40 text-red-200 text-[11px] flex items-start gap-2">
+              <div className="crm-alert-error text-[11px] flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{formError}</span>
               </div>

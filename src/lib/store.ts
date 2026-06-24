@@ -66,6 +66,8 @@ export interface Lead {
   updatedAt: string;
   /** Set by backend when status enters PROPOSAL_SENT (canonical stuck-proposal anchor). */
   proposalSentAt?: string;
+  /** Customer inquiry / request text (website forms, manual entry). */
+  message?: string;
 }
 
 export interface LeadNote {
@@ -352,6 +354,12 @@ interface CRMStore {
   setRoleModulePermission: (
     roleId: string,
     module: RbacModuleKey,
+    permission: keyof RbacCrudSet,
+    value: boolean,
+  ) => void;
+  setRoleModuleRowAll: (roleId: string, module: RbacModuleKey, value: boolean) => void;
+  setRoleModuleColumnAll: (
+    roleId: string,
     permission: keyof RbacCrudSet,
     value: boolean,
   ) => void;
@@ -780,6 +788,78 @@ export const useStore = create<CRMStore>((set, get) => ({
         permissions: { ...role.permissions, [module]: nextRow },
       };
 
+      const roleDefinitions = [...s.roleDefinitions];
+      roleDefinitions[ix] = nextDef;
+      persistRoleDefinitions(roleDefinitions);
+      return { roleDefinitions };
+    });
+  },
+
+  setRoleModuleRowAll: (roleId, module, value) => {
+    const agencyId = get().currentAgency.id;
+    if (!RBAC_MODULE_DEFS.some((d) => d.key === module)) return;
+    const existing = get().roleDefinitions.find(
+      (r) => r.id === roleId && r.agencyId === agencyId,
+    );
+    if (!existing) return;
+
+    set((s) => {
+      const ix = s.roleDefinitions.findIndex(
+        (r) => r.id === roleId && r.agencyId === agencyId,
+      );
+      if (ix === -1) return s;
+
+      const role = s.roleDefinitions[ix];
+      const nextRow: RbacCrudSet = {
+        view: value,
+        create: value,
+        edit: value,
+        delete: value,
+      };
+      const nextDef: RoleDefinition = {
+        ...role,
+        permissions: { ...role.permissions, [module]: nextRow },
+      };
+      const roleDefinitions = [...s.roleDefinitions];
+      roleDefinitions[ix] = nextDef;
+      persistRoleDefinitions(roleDefinitions);
+      return { roleDefinitions };
+    });
+  },
+
+  setRoleModuleColumnAll: (roleId, permission, value) => {
+    const agencyId = get().currentAgency.id;
+    const permOk =
+      permission === 'view' ||
+      permission === 'create' ||
+      permission === 'edit' ||
+      permission === 'delete';
+    if (!permOk) return;
+    const existing = get().roleDefinitions.find(
+      (r) => r.id === roleId && r.agencyId === agencyId,
+    );
+    if (!existing) return;
+
+    set((s) => {
+      const ix = s.roleDefinitions.findIndex(
+        (r) => r.id === roleId && r.agencyId === agencyId,
+      );
+      if (ix === -1) return s;
+
+      const role = s.roleDefinitions[ix];
+      const permissions = { ...role.permissions };
+      for (const { key } of RBAC_MODULE_DEFS) {
+        const row = permissions[key];
+        permissions[key] = row
+          ? { ...row, [permission]: value }
+          : {
+              view: permission === 'view' ? value : false,
+              create: permission === 'create' ? value : false,
+              edit: permission === 'edit' ? value : false,
+              delete: permission === 'delete' ? value : false,
+            };
+      }
+      const nextDef: RoleDefinition = { ...role, permissions };
       const roleDefinitions = [...s.roleDefinitions];
       roleDefinitions[ix] = nextDef;
       persistRoleDefinitions(roleDefinitions);

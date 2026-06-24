@@ -72,3 +72,39 @@ export async function createBooking(input: BookingCreateInput): Promise<ApiBooki
     }),
   });
 }
+
+export type BookingUpdateInput = {
+  customerId?: string;
+  itineraryId?: string | null;
+  status?: Booking["status"];
+  voucherUrl?: string | null;
+  ticketUrl?: string | null;
+  hotelConfirmationCode?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  visaStatus?: string | null;
+};
+
+export async function updateBooking(
+  id: string,
+  input: BookingUpdateInput,
+): Promise<ApiBookingRead> {
+  const body: Record<string, unknown> = {};
+  if (input.customerId !== undefined) body.customer_id = input.customerId;
+  if (input.itineraryId !== undefined) body.itinerary_id = input.itineraryId;
+  if (input.status !== undefined) body.status = input.status;
+  if (input.voucherUrl !== undefined) body.voucher_url = input.voucherUrl;
+  if (input.ticketUrl !== undefined) body.ticket_url = input.ticketUrl;
+  if (input.hotelConfirmationCode !== undefined) {
+    body.hotel_confirmation_code = input.hotelConfirmationCode;
+  }
+  if (input.driverName !== undefined) body.driver_name = input.driverName;
+  if (input.driverPhone !== undefined) body.driver_phone = input.driverPhone;
+  if (input.visaStatus !== undefined) body.visa_status = input.visaStatus;
+
+  return crmFetchJson<ApiBookingRead>(`/api/crm/bookings/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}

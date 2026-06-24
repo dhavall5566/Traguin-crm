@@ -8,6 +8,7 @@ import {
   Map,
   Layers,
   CalendarRange,
+  ClipboardList,
   Settings,
 } from "lucide-react";
 import { RBAC_NAV_MODULE, type RbacModuleKey } from "@/lib/rbac";
@@ -57,6 +58,12 @@ export const CRM_NAV_GROUPS: CrmNavGroup[] = [
         href: "/dashboard/customers",
         icon: Users,
         rbacModule: RBAC_NAV_MODULE["/dashboard/customers"],
+      },
+      {
+        name: "Bookings",
+        href: "/dashboard/bookings",
+        icon: ClipboardList,
+        rbacModule: RBAC_NAV_MODULE["/dashboard/bookings"],
       },
     ],
   },

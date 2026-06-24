@@ -44,6 +44,7 @@ export type ApiLeadRead = {
   assigned_to_id: string | null;
   customer_id: string | null;
   proposal_sent_at: string | null;
+  message: string | null;
   created_at: string;
   updated_at: string;
   notes: ApiLeadNote[];
@@ -90,6 +91,7 @@ export type LeadCreateInput = {
   status?: Lead["status"];
   value?: number;
   assignedToId?: string;
+  message?: string;
 };
 
 export type LeadUpdateInput = Partial<
@@ -104,6 +106,7 @@ export type LeadUpdateInput = Partial<
     | "status"
     | "value"
     | "assignedToId"
+    | "message"
   >
 >;
 
@@ -180,6 +183,7 @@ export function mapLeadFromApi(
     customerId: lead.customer_id ?? extras?.customerId,
     proposalItineraryId: extras?.proposalItineraryId,
     proposalSentAt: lead.proposal_sent_at ?? undefined,
+    message: lead.message ?? undefined,
     notes: lead.notes.map((n) => mapNoteFromApi(n, userNameById)),
     activities: lead.activities.map((a) => mapActivityFromApi(a, userNameById)),
     followups: lead.followups.map((f) => mapFollowupFromApi(f, userNameById)),
@@ -197,6 +201,7 @@ function leadToApiCreateBody(input: LeadCreateInput) {
     status: input.status ?? "NEW",
     value: input.value ?? 0,
     assigned_to_id: input.assignedToId || null,
+    message: input.message?.trim() || null,
   };
 }
 
@@ -211,6 +216,7 @@ function leadToApiUpdateBody(input: LeadUpdateInput) {
   if (input.status !== undefined) body.status = input.status;
   if (input.value !== undefined) body.value = input.value;
   if (input.assignedToId !== undefined) body.assigned_to_id = input.assignedToId || null;
+  if (input.message !== undefined) body.message = input.message?.trim() || null;
   return body;
 }
 

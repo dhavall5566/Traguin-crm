@@ -245,7 +245,7 @@ export default function FinancePage() {
         </p>
       ) : null}
       {actionError ? (
-        <p className="rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+        <p className="crm-alert-warning text-xs">
           {actionError}
         </p>
       ) : null}

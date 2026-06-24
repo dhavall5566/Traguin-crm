@@ -114,25 +114,35 @@ export function useLeadsPage() {
     const extras = loadLeadExtras();
     setExtrasMap(extras);
     hydratedLeadIdsRef.current.clear();
-    setLoading(true);
-    setBackgroundLoading(false);
-    await loadProgressiveCrmList<
-      Awaited<ReturnType<typeof listLeads>>["items"][number],
-      LeadRecord
-    >({
-      cachePrefix: CRM_CACHE.leads,
-      fetchPage: bindCrmListFetch(listLeads),
-      mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
-      force: true,
-      onFirstPage: (firstItems) => {
-        setLeads(firstItems);
-        setLoading(false);
-      },
-      onComplete: (allItems) => {
-        setLeads(allItems);
-        setBackgroundLoading(false);
-      },
-    });
+    const hasVisible = (getCrmWorkspaceList<LeadRecord>(CRM_CACHE.leads)?.items.length ?? 0) > 0;
+    if (hasVisible) {
+      setBackgroundLoading(true);
+    } else {
+      setLoading(true);
+    }
+    try {
+      await loadProgressiveCrmList<
+        Awaited<ReturnType<typeof listLeads>>["items"][number],
+        LeadRecord
+      >({
+        cachePrefix: CRM_CACHE.leads,
+        fetchPage: bindCrmListFetch(listLeads),
+        mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
+        force: true,
+        onFirstPage: (firstItems) => {
+          setLeads(firstItems);
+          setLoading(false);
+        },
+        onComplete: (allItems) => {
+          setLeads(allItems);
+          setBackgroundLoading(false);
+        },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load leads");
+      setLoading(false);
+      setBackgroundLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -247,15 +257,25 @@ export function useLeadsPage() {
 
   const addLead = useCallback(
     async (input: LeadCreateInput & { customerId?: string }) => {
-      const { customerId: _ignored, ...createInput } = input;
-      const apiLead = await createLead(createInput, {
-        initialActivity: {
-          type: "NOTE",
-          description: `Lead created from source: ${createInput.source || "Manual Input"}`,
-        },
-      });
-      invalidateCrmListCache(CRM_CACHE.leads);
-      replaceLeadInState(apiLead);
+      const lockKey = "create-lead";
+      if (leadMutationLockRef.current.has(lockKey)) {
+        return undefined;
+      }
+      leadMutationLockRef.current.add(lockKey);
+      try {
+        const { customerId: _ignored, ...createInput } = input;
+        const apiLead = await createLead(createInput, {
+          initialActivity: {
+            type: "NOTE",
+            description: `Lead created from source: ${createInput.source || "Manual Input"}`,
+          },
+        });
+        invalidateCrmListCache(CRM_CACHE.leads);
+        replaceLeadInState(apiLead);
+        return apiLead;
+      } finally {
+        leadMutationLockRef.current.delete(lockKey);
+      }
     },
     [replaceLeadInState],
   );

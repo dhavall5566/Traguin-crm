@@ -88,6 +88,7 @@ export const CRM_CACHE = {
   expenses: "expenses",
   vendorPayouts: "vendor-payouts",
   auditLogs: "audit-logs",
+  staff: "staff",
 } as const;
 
 export type CrmCacheKey = (typeof CRM_CACHE)[keyof typeof CRM_CACHE];

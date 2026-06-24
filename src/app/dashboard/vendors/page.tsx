@@ -196,15 +196,17 @@ export default function VendorsPage() {
       ) : null}
 
       {/* Search */}
-      <div className="relative text-xs">
-        <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-2.5" />
-        <input
-          type="text"
-          placeholder="Filter vendors by name or service category..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-card border border-border focus:border-primary focus:outline-none"
-        />
+      <div className="crm-filter-bar text-xs">
+        <div className="crm-filter-bar__search">
+          <Search className="crm-filter-bar__search-icon" />
+          <input
+            type="text"
+            placeholder="Filter vendors by name or service category..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="crm-filter-bar__input"
+          />
+        </div>
       </div>
 
       {/* Grid workspace */}
@@ -311,7 +313,7 @@ export default function VendorsPage() {
                   </button>
                 </div>
                 {deleteError ? (
-                  <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[10px] font-medium text-amber-200">
+                  <p className="mt-2 crm-alert-warning text-[10px] font-medium">
                     {deleteError}
                   </p>
                 ) : null}

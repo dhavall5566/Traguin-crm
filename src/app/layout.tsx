@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import LayoutShell from "@/components/ui/LayoutShell";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { CrmToastProvider } from "@/components/ui/CrmToastProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,7 +31,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <SessionProvider>
-          <LayoutShell>{children}</LayoutShell>
+          <CrmToastProvider>
+            <LayoutShell>{children}</LayoutShell>
+          </CrmToastProvider>
         </SessionProvider>
       </body>
     </html>

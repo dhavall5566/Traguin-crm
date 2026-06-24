@@ -38,6 +38,7 @@ export const RBAC_NAV_MODULE: Record<string, RbacModuleKey> = {
   '/dashboard/operations': 'itinerary',
   '/dashboard/crm': 'leads',
   '/dashboard/customers': 'customers',
+  '/dashboard/bookings': 'customers',
   '/dashboard/itinerary': 'itinerary',
   '/dashboard/vendors': 'vendors',
   '/dashboard/finance': 'finance',

@@ -389,10 +389,13 @@ export default function ItineraryPage() {
       crmItineraryIntent ??
       crmItineraryIntentRef.current ??
       readCrmItineraryCreationIntentFromStorage();
+    const inquiry = intent?.leadMessage?.trim();
     const goal = intent?.leadGoalTitle?.trim();
-    setNewTitle(goal ?? '');
+    setNewTitle(inquiry || goal || '');
     if (intent?.leadId) {
       void getLead(intent.leadId).then((lead) => {
+        const msg = lead.message?.trim();
+        if (msg) setNewTitle(msg);
         const namePart = [lead.first_name, lead.last_name].filter(Boolean).join(' ').trim();
         setNewDesc(
           namePart
@@ -404,7 +407,15 @@ export default function ItineraryPage() {
           setNewCustId(cid);
           setCrmItineraryIntent((prev) => {
             const base = prev ?? intent;
-            return base.customerId?.trim() ? base : { ...base, customerId: cid };
+            return base.customerId?.trim()
+              ? { ...base, leadMessage: msg || base.leadMessage }
+              : { ...base, customerId: cid, leadMessage: msg || base.leadMessage };
+          });
+        } else if (msg && !inquiry) {
+          setNewTitle(msg);
+          setCrmItineraryIntent((prev) => {
+            const base = prev ?? intent;
+            return { ...base, leadMessage: msg };
           });
         }
       });
@@ -417,9 +428,21 @@ export default function ItineraryPage() {
       crmItineraryIntent ??
       crmItineraryIntentRef.current ??
       readCrmItineraryCreationIntentFromStorage();
+    const crmInquiry = mergedIntent?.leadMessage?.trim();
     const crmGoal = mergedIntent?.leadGoalTitle?.trim();
     const hint = agencyItineraries.find((i) => i.id === selectedItinId);
-    setAiDestination(crmGoal || (hint?.description?.trim() ?? ''));
+    setAiDestination(crmInquiry || crmGoal || (hint?.description?.trim() ?? ''));
+    if (mergedIntent?.leadId && !crmInquiry) {
+      void getLead(mergedIntent.leadId).then((lead) => {
+        const msg = lead.message?.trim();
+        if (!msg) return;
+        setAiDestination(msg);
+        setCrmItineraryIntent((prev) => {
+          const base = prev ?? mergedIntent;
+          return { ...base, leadMessage: msg };
+        });
+      });
+    }
     setAiNumDays(5);
     setAiTravelStyle('Balanced');
     setShowAiModal(true);
@@ -481,7 +504,7 @@ export default function ItineraryPage() {
 
     const dest = aiDestination.trim();
     if (!dest) {
-      alert('Please enter a destination.');
+      alert('Please enter a title.');
       return;
     }
 
@@ -1221,7 +1244,7 @@ export default function ItineraryPage() {
                                           setItemType('HOTEL');
                                         }
                                       }}
-                                      className="inline-flex items-center gap-1 rounded-md border border-destructive/40 px-2 py-1 text-[10px] font-semibold text-destructive hover:bg-destructive/10"
+                                      className="crm-btn-danger crm-btn-danger--compact"
                                     >
                                       <Trash2 className="h-3 w-3 shrink-0" aria-hidden />
                                       Remove
@@ -1651,14 +1674,14 @@ export default function ItineraryPage() {
             <form onSubmit={handleAiModalGenerate} className="space-y-5">
               <div className="space-y-2">
                 <label htmlFor="ai-destination" className="text-sm font-medium text-foreground">
-                  Destination
+                  Title
                 </label>
                 <input
                   id="ai-destination"
                   type="text"
                   value={aiDestination}
                   onChange={(e) => setAiDestination(e.target.value)}
-                  placeholder="e.g. Kyoto, Japan"
+                  placeholder="e.g. I want 5D/4N Kerala package."
                   disabled={aiGenerating}
                   className="w-full rounded-xl border border-border bg-secondary/40 px-3.5 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
                 />

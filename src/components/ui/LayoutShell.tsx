@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { prefetchCrmNavRoute } from '@/lib/api/crm-prefetch';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
@@ -21,6 +22,7 @@ import { CRM_NAV_GROUPS, type CrmNavGroup } from '@/lib/crm-nav-config';
 import { getCrmBreadcrumbLabel } from '@/lib/crm-breadcrumbs';
 import { getCmsAppUrl } from '@/lib/admin-links';
 import { prefetchCrossApp } from '@/lib/cross-app-prefetch';
+import { traguinLogo, TRAGUIN_LOGO_SRC } from '@/lib/brand/traguin-logo';
 
 function SidebarNavGroups({
   groups,
@@ -291,8 +293,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         <div className="flex items-center space-x-2">
           <AgencyLogo
             name={currentAgency.name || 'Traguin'}
-            logoUrl={currentAgency.logoUrl || '/agency-logo.svg'}
-            className="w-8 h-8 rounded object-cover shrink-0"
+            logoUrl={currentAgency.logoUrl || TRAGUIN_LOGO_SRC}
+            className="h-8 w-auto max-w-[7rem] rounded object-contain shrink-0"
           />
           <span className="font-semibold text-xs truncate max-w-[120px]">
             {currentAgency.name || 'Traguin'}
@@ -300,6 +302,16 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         </div>
 
         <div className="flex items-center space-x-2">
+          <a
+            href={cmsUrl}
+            className="crm-switch-cms crm-switch-cms--topbar"
+            onMouseEnter={() => prefetchCrossApp(cmsUrl)}
+            onFocus={() => prefetchCrossApp(cmsUrl)}
+          >
+            <span className="hidden min-[420px]:inline">Switch to CMS</span>
+            <span className="min-[420px]:hidden">CMS</span>
+          </a>
+
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             className="crm-icon-btn"
@@ -322,12 +334,12 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       <aside className="crm-sidebar hidden md:flex md:h-full md:min-h-0 flex-col">
         <div className="crm-sidebar__header">
           <div className="crm-sidebar-brand">
-            <img
-              src="/agency-logo.svg"
-              alt="Traguin"
-              className="crm-sidebar-brand__mark"
+            <Image
+              src={traguinLogo}
+              alt="TRAGUIN"
+              className="crm-sidebar-brand__logo"
+              priority
             />
-            <span className="crm-sidebar-brand__title">TRAGUIN</span>
             <span className="crm-sidebar-brand__badge">CRM</span>
           </div>
         </div>
@@ -340,16 +352,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           />
         </div>
 
-        <div className="crm-sidebar-footer">
-          <a
-            href={cmsUrl}
-            className="crm-switch-cms"
-            onMouseEnter={() => prefetchCrossApp(cmsUrl)}
-            onFocus={() => prefetchCrossApp(cmsUrl)}
-          >
-            Switch to CMS
-          </a>
-        </div>
       </aside>
 
       <div className="crm-main-column min-h-0 flex-1 flex flex-col">
@@ -378,6 +380,15 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           </div>
 
           <div className="crm-topbar__section crm-topbar__section--end">
+            <a
+              href={cmsUrl}
+              className="crm-switch-cms crm-switch-cms--topbar"
+              onMouseEnter={() => prefetchCrossApp(cmsUrl)}
+              onFocus={() => prefetchCrossApp(cmsUrl)}
+            >
+              Switch to CMS
+            </a>
+
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className="crm-icon-btn"
@@ -504,14 +515,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
               />
             </div>
 
-            <div className="crm-sidebar-footer space-y-2 shrink-0">
-              <a
-                href={cmsUrl}
-                className="crm-switch-cms"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Switch to CMS
-              </a>
+            <div className="crm-sidebar-footer shrink-0">
               <button
                 onClick={handleLogout}
                 className="crm-switch-cms text-destructive"

@@ -3,6 +3,7 @@ const CRM_PAGE_LABELS: Record<string, string> = {
   "/dashboard/operations": "Weekly schedule",
   "/dashboard/crm": "Leads",
   "/dashboard/customers": "Customers",
+  "/dashboard/bookings": "Bookings",
   "/dashboard/itinerary": "Trip planner",
   "/dashboard/vendors": "Vendors",
   "/dashboard/finance": "Billing",

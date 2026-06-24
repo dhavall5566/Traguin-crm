@@ -28,6 +28,7 @@ import {
 import {
   Plus,
   Search,
+  RefreshCw,
   X,
   Activity,
   Trash2,
@@ -39,7 +40,10 @@ import {
   Check,
 } from 'lucide-react';
 
-type LeadDetailDraft = Pick<Lead, 'status' | 'value' | 'assignedToId'> & { source: string };
+type LeadDetailDraft = Pick<Lead, 'status' | 'value' | 'assignedToId'> & {
+  source: string;
+  message: string;
+};
 
 const stages = [
   { id: 'NEW', name: 'New Leads', color: 'border-t-indigo-500 bg-indigo-500/5' },
@@ -113,6 +117,7 @@ export default function CRMPage() {
     loading: leadsLoading,
     backgroundLoading: leadsBackgroundLoading,
     error: leadsError,
+    refreshLeads,
     hydrateLeadDetail,
     addLead,
     updateLeadStatus,
@@ -131,6 +136,10 @@ export default function CRMPage() {
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [savingLead, setSavingLead] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
+  const creatingLeadRef = useRef(false);
+  const [creatingBooking, setCreatingBooking] = useState(false);
+  const creatingBookingRef = useRef(false);
 
   const runLeadAction = async (label: string, fn: () => Promise<void>) => {
     setActionError(null);
@@ -147,6 +156,7 @@ export default function CRMPage() {
   const debouncedSearch = useDebouncedValue(search);
   const [filterAgent, setFilterAgent] = useState('ALL');
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('30d');
+  const [refreshingLeads, setRefreshingLeads] = useState(false);
   type SortBy = 'value' | 'date';
   const [sortBy, setSortBy] = useState<SortBy>('date');
 
@@ -257,6 +267,7 @@ export default function CRMPage() {
         value: snap.value,
         assignedToId: snap.assignedToId,
         source: snap.source ?? '',
+        message: snap.message ?? '',
       });
     }
   }, [selectedLeadId, leads, currentAgency.id]);
@@ -274,6 +285,7 @@ export default function CRMPage() {
       value: selectedLead.value,
       assignedToId: selectedLead.assignedToId,
       source: selectedLead.source ?? '',
+      message: selectedLead.message ?? '',
     };
   }, [selectedLead, selectedLeadId, leadDetailDraft]);
 
@@ -295,7 +307,8 @@ export default function CRMPage() {
       pipelineDraft.status !== selectedLead.status ||
       drawerResolvedDealValue !== Number(selectedLead.value) ||
       (pipelineDraft.assignedToId || '') !== (selectedLead.assignedToId || '') ||
-      (pipelineDraft.source || '') !== (selectedLead.source || '')
+      (pipelineDraft.source || '') !== (selectedLead.source || '') ||
+      (pipelineDraft.message || '') !== (selectedLead.message || '')
     );
   }, [selectedLead, pipelineDraft, drawerResolvedDealValue]);
 
@@ -389,6 +402,7 @@ export default function CRMPage() {
           value: selectedLead.value,
           assignedToId: selectedLead.assignedToId,
           source: selectedLead.source ?? '',
+          message: selectedLead.message ?? '',
         };
       return { ...base, ...patch };
     });
@@ -417,6 +431,9 @@ export default function CRMPage() {
         if ((pipelineDraft.source || '') !== (selectedLead.source || '')) {
           updates.source = pipelineDraft.source;
         }
+        if ((pipelineDraft.message || '') !== (selectedLead.message || '')) {
+          updates.message = pipelineDraft.message.trim() || undefined;
+        }
         if (
           (bookingItineraryId || '') !== ((selectedLead.proposalItineraryId ?? '') || '')
         ) {
@@ -432,6 +449,7 @@ export default function CRMPage() {
           value: drawerResolvedDealValue,
           assignedToId: pipelineDraft.assignedToId,
           source: pipelineDraft.source ?? '',
+          message: pipelineDraft.message ?? '',
         });
 
         setSaveToastVisible(true);
@@ -453,6 +471,7 @@ export default function CRMPage() {
 
   // New Lead Form state
   const [newTitle, setNewTitle] = useState('');
+  const [newMessage, setNewMessage] = useState('');
   const [newFirstName, setNewFirstName] = useState('');
   const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -505,6 +524,7 @@ export default function CRMPage() {
       /* quota / blocked */
     }
     setNewTitle('');
+    setNewMessage('');
     setNewFirstName('');
     setNewLastName('');
     setNewEmail('');
@@ -835,6 +855,7 @@ export default function CRMPage() {
 
   const handleCreateBookingFromCrm = () => {
     if (!selectedLead) return;
+    if (creatingBookingRef.current) return;
 
     if (hasOutstandingInvoiceForLeadTraveller) {
       alert(
@@ -879,91 +900,109 @@ export default function CRMPage() {
       return;
     }
 
+    creatingBookingRef.current = true;
+    setCreatingBooking(true);
+
     void runLeadAction('Create booking', async () => {
-      if (!cid) {
-        alert('Link or create a customer profile before converting to a booking.');
-        return;
-      }
-
-      if (cid && cid !== (selectedLead.customerId || '').trim()) {
-        await updateLead(selectedLead.id, { customerId: cid });
-      }
-
-      const apiBooking = await createBookingApi({
-        customerId: cid,
-        itineraryId,
-        status: 'PENDING',
-      });
-      const newBooking = mapBookingFromApi(apiBooking);
-
-      const dueDays = Math.min(
-        365,
-        Math.max(1, Math.round(Number(workspacePreferences.defaultInvoiceDueDays) || 30)),
-      );
-      const dueDate = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-      const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(100 + Math.random() * 900))}`;
-
-      let draftedInvoice = null as ReturnType<typeof mapInvoiceFromApi> | null;
       try {
-        const apiInvoice = await createInvoice({
-          bookingId: newBooking.id,
-          invoiceNumber,
-          amount: Number(itinerary.totalPrice) || 0,
-          dueDate,
-          status: 'UNPAID',
+        if (!cid) {
+          alert('Link or create a customer profile before converting to a booking.');
+          return;
+        }
+
+        if (cid && cid !== (selectedLead.customerId || '').trim()) {
+          await updateLead(selectedLead.id, { customerId: cid });
+        }
+
+        const apiBooking = await createBookingApi({
+          customerId: cid,
+          itineraryId,
+          status: 'PENDING',
         });
-        draftedInvoice = mapInvoiceFromApi(apiInvoice);
-      } catch {
-        /* booking succeeded; invoice can be created from Billing */
-      }
+        const newBooking = mapBookingFromApi(apiBooking);
 
-      await refreshBookingsInvoices();
-
-      const invNo = draftedInvoice?.invoiceNumber;
-      const invAmt = draftedInvoice != null ? Number(draftedInvoice.amount) : 0;
-
-      await updateLeadStatus(selectedLead.id, 'CONFIRMED');
-      const { promise: bookingNotePromise } = addLeadNote(
-        selectedLead.id,
-        `Converted to booking on "${itinerary.title}". Draft invoice${invNo ? ` ${invNo}` : ''} — ₹${invAmt.toLocaleString('en-IN')}${!draftedInvoice ? ' (see Billing)' : ''}. Record payments in Billing & ERP Finance.`,
-        currentUser?.name ?? 'System',
-      );
-      await bookingNotePromise;
-
-      if (!draftedInvoice) {
-        alert(
-          'Booking was created, but no draft invoice was generated (trip data may be out of sync). You were taken to Billing — use “Record payment” on the invoice if it appears.',
+        const dueDays = Math.min(
+          365,
+          Math.max(1, Math.round(Number(workspacePreferences.defaultInvoiceDueDays) || 30)),
         );
-      }
+        const dueDate = new Date(Date.now() + dueDays * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0];
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(100 + Math.random() * 900))}`;
 
-      /** Close lead drawer and open Billing (invoices / Accounts Receivable is the default tab) */
-      setSelectedLeadId(null);
-      router.push('/dashboard/finance');
+        let draftedInvoice = null as ReturnType<typeof mapInvoiceFromApi> | null;
+        try {
+          const apiInvoice = await createInvoice({
+            bookingId: newBooking.id,
+            invoiceNumber,
+            amount: Number(itinerary.totalPrice) || 0,
+            dueDate,
+            status: 'UNPAID',
+          });
+          draftedInvoice = mapInvoiceFromApi(apiInvoice);
+        } catch {
+          /* booking succeeded; invoice can be created from Billing */
+        }
+
+        await refreshBookingsInvoices();
+
+        const invNo = draftedInvoice?.invoiceNumber;
+        const invAmt = draftedInvoice != null ? Number(draftedInvoice.amount) : 0;
+
+        await updateLeadStatus(selectedLead.id, 'CONFIRMED');
+        const { promise: bookingNotePromise } = addLeadNote(
+          selectedLead.id,
+          `Converted to booking on "${itinerary.title}". Draft invoice${invNo ? ` ${invNo}` : ''} — ₹${invAmt.toLocaleString('en-IN')}${!draftedInvoice ? ' (see Billing)' : ''}. Record payments in Billing & ERP Finance.`,
+          currentUser?.name ?? 'System',
+        );
+        await bookingNotePromise;
+
+        if (!draftedInvoice) {
+          alert(
+            'Booking was created, but no draft invoice was generated (trip data may be out of sync). You were taken to Billing — use “Record payment” on the invoice if it appears.',
+          );
+        }
+
+        /** Close lead drawer and open Billing (invoices / Accounts Receivable is the default tab) */
+        setSelectedLeadId(null);
+        router.push('/dashboard/finance');
+      } finally {
+        creatingBookingRef.current = false;
+        setCreatingBooking(false);
+      }
     });
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (creatingLeadRef.current) return;
     if (leadEntryMode === 'existing' && !selectedCustomerId) return;
 
     void runLeadAction('Create lead', async () => {
-      await addLead({
-        title: newTitle,
-        firstName: newFirstName,
-        lastName: newLastName,
-        email: newEmail || undefined,
-        phone: newPhone || undefined,
-        status: 'NEW',
-        value: Number(newValue) || 0,
-        source: newSource,
-        assignedToId: newAssigned || undefined,
-        customerId: selectedCustomerId || undefined,
-      });
+      creatingLeadRef.current = true;
+      setCreatingLead(true);
+      try {
+        const created = await addLead({
+          title: newTitle,
+          firstName: newFirstName,
+          lastName: newLastName,
+          email: newEmail || undefined,
+          phone: newPhone || undefined,
+          status: 'NEW',
+          value: Number(newValue) || 0,
+          source: newSource,
+          assignedToId: newAssigned || undefined,
+          customerId: selectedCustomerId || undefined,
+          message: newMessage.trim() || undefined,
+        });
+        if (!created) return;
 
-      resetLeadForm();
-      setShowAddModal(false);
+        resetLeadForm();
+        setShowAddModal(false);
+      } finally {
+        creatingLeadRef.current = false;
+        setCreatingLead(false);
+      }
     });
   };
 
@@ -1028,6 +1067,18 @@ export default function CRMPage() {
     void runLeadAction('Update status', () => updateLeadStatus(leadId, status));
   };
 
+  const handleRefreshLeads = () => {
+    if (refreshingLeads || leadsLoading) return;
+    void (async () => {
+      setRefreshingLeads(true);
+      try {
+        await refreshLeads();
+      } finally {
+        setRefreshingLeads(false);
+      }
+    })();
+  };
+
   return (
     <>
       {saveToastVisible && (
@@ -1062,13 +1113,13 @@ export default function CRMPage() {
       )}
 
       {leadsError && !leadsLoading && (
-        <div className="rounded-xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-xs text-red-300">
+        <div className="crm-alert-error text-xs">
           Could not load leads: {leadsError}
         </div>
       )}
 
       {actionError && (
-        <div className="rounded-xl border border-amber-900/40 bg-amber-950/20 px-4 py-2 text-[11px] text-amber-200">
+        <div className="crm-alert-warning text-[11px]">
           {actionError}
         </div>
       )}
@@ -1174,19 +1225,32 @@ export default function CRMPage() {
           </select>
         </div>
 
-        <div className="crm-view-toggle" role="tablist" aria-label="Lead layout">
-          {LEAD_VIEW_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              role="tab"
-              aria-selected={leadView === opt.value}
-              className={`crm-view-toggle__btn ${leadView === opt.value ? 'crm-view-toggle__btn--active' : ''}`}
-              onClick={() => setLeadView(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="crm-filter-bar__actions">
+          <button
+            type="button"
+            onClick={handleRefreshLeads}
+            disabled={refreshingLeads || leadsLoading}
+            className="crm-filter-bar__refresh"
+            aria-label="Refresh leads"
+            title="Refresh leads"
+          >
+            <RefreshCw className={refreshingLeads || leadsBackgroundLoading ? 'animate-spin' : ''} />
+          </button>
+
+          <div className="crm-view-toggle" role="tablist" aria-label="Lead layout">
+            {LEAD_VIEW_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="tab"
+                aria-selected={leadView === opt.value}
+                className={`crm-view-toggle__btn ${leadView === opt.value ? 'crm-view-toggle__btn--active' : ''}`}
+                onClick={() => setLeadView(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1595,6 +1659,19 @@ export default function CRMPage() {
                 />
               </div>
 
+              <div>
+                <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+                  Message
+                </label>
+                <textarea
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. I want 5D/4N Kerala package."
+                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none resize-y min-h-[4.5rem]"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
@@ -1720,9 +1797,10 @@ export default function CRMPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold"
+                  disabled={creatingLead}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  Save Lead Card
+                  {creatingLead ? 'Saving…' : 'Save Lead Card'}
                 </button>
               </div>
             </form>
@@ -1927,6 +2005,24 @@ export default function CRMPage() {
                   </div>
                 </section>
 
+                <section className="crm-lead-drawer__section">
+                  <h3 className="crm-lead-drawer__section-title">Message</h3>
+                  <label
+                    htmlFor={`lead-message-${selectedLead.id}`}
+                    className="crm-lead-drawer__field-label"
+                  >
+                    Customer inquiry
+                  </label>
+                  <textarea
+                    id={`lead-message-${selectedLead.id}`}
+                    value={pipelineDraft.message}
+                    onChange={(e) => setDrawerPipeline({ message: e.target.value })}
+                    rows={4}
+                    placeholder="e.g. I want 5D/4N Kerala package."
+                    className="crm-lead-drawer__message"
+                  />
+                </section>
+
                 <section className="crm-lead-drawer__section crm-lead-drawer__booking">
                   <h3 className="crm-lead-drawer__booking-title">
                     <ClipboardList className="h-4 w-4 text-[var(--gold)]" aria-hidden />
@@ -1946,6 +2042,7 @@ export default function CRMPage() {
                             leadId: selectedLead.id,
                             customerId: '',
                             leadGoalTitle: (selectedLead.title ?? '').trim(),
+                            leadMessage: (selectedLead.message ?? '').trim(),
                           };
                           sessionStorage.setItem(STORAGE_CREATE_ITIN_FROM_CRM, JSON.stringify(payload));
                         } catch {
@@ -1981,18 +2078,24 @@ export default function CRMPage() {
                   )}
                   <button
                     type="button"
-                    disabled={!crmChosenProposalItineraryId || hasOutstandingInvoiceForLeadTraveller}
+                    disabled={
+                      !crmChosenProposalItineraryId ||
+                      hasOutstandingInvoiceForLeadTraveller ||
+                      creatingBooking
+                    }
                     title={
-                      !crmChosenProposalItineraryId
-                        ? 'Choose a proposal itinerary first'
-                        : hasOutstandingInvoiceForLeadTraveller
-                          ? 'Settle outstanding invoice before creating another booking'
-                          : 'Create booking and draft invoice'
+                      creatingBooking
+                        ? 'Creating booking and invoice…'
+                        : !crmChosenProposalItineraryId
+                          ? 'Choose a proposal itinerary first'
+                          : hasOutstandingInvoiceForLeadTraveller
+                            ? 'Settle outstanding invoice before creating another booking'
+                            : 'Create booking and draft invoice'
                     }
                     onClick={handleCreateBookingFromCrm}
                     className="crm-lead-drawer__btn-primary"
                   >
-                    Create booking + draft invoice
+                    {creatingBooking ? 'Creating…' : 'Create booking + draft invoice'}
                   </button>
                 </section>
               </div>
