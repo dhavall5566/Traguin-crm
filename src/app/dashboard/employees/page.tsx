@@ -10,6 +10,9 @@ import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
 import { Search, Plus, X } from 'lucide-react';
 import { StaffUsersTablePanel } from '@/components/staff/StaffUsersTablePanel';
 import { useCrmToast } from '@/components/ui/CrmToastProvider';
+import { PhoneInput } from '@/components/ui/PhoneInput';
+import { defaultCountryCode } from '@/data/country-codes';
+import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import { apiRoleIdFromDefinition } from '@/lib/api/role-catalog';
 import type { User } from '@/lib/store';
 
@@ -66,6 +69,7 @@ export default function EmployeesPage() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newPhoneCountryCode, setNewPhoneCountryCode] = useState(defaultCountryCode);
   const [newPassword, setNewPassword] = useState('');
   const [newRoleName, setNewRoleName] = useState('');
 
@@ -73,6 +77,7 @@ export default function EmployeesPage() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editPhoneCountryCode, setEditPhoneCountryCode] = useState(defaultCountryCode);
   const [editRoleName, setEditRoleName] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -122,6 +127,7 @@ export default function EmployeesPage() {
     setNewName('');
     setNewEmail('');
     setNewPhone('');
+    setNewPhoneCountryCode(defaultCountryCode);
     setNewPassword('');
     setNewRoleName(agencyRoleDefs[0]?.name ?? '');
     setCreateError(null);
@@ -152,7 +158,7 @@ export default function EmployeesPage() {
           name: newName.trim(),
           email: newEmail.trim(),
           password: newPassword,
-          phone: newPhone.trim() || undefined,
+          phone: formatFullPhone(newPhoneCountryCode, newPhone) || undefined,
           roleName: newRoleName,
           roleId: assignRoleDef ? apiRoleIdFromDefinition(assignRoleDef) : undefined,
         });
@@ -181,7 +187,9 @@ export default function EmployeesPage() {
     setEditingUser(user);
     setEditName(user.name);
     setEditEmail(user.email);
-    setEditPhone(user.phone ?? '');
+    const parsedPhone = parsePhoneNumber(user.phone);
+    setEditPhoneCountryCode(parsedPhone.countryCode);
+    setEditPhone(parsedPhone.localNumber);
     setEditRoleName(user.role);
     setEditPassword('');
     setEditError(null);
@@ -213,7 +221,7 @@ export default function EmployeesPage() {
         const updated = await updateStaffUser(editingUser.id, {
           name: editName.trim(),
           email: editEmail.trim(),
-          phone: editPhone.trim() || null,
+          phone: formatFullPhone(editPhoneCountryCode, editPhone) || null,
           ...(editPassword ? { password: editPassword } : {}),
           roleName: editRoleName,
           roleId: roleDef ? apiRoleIdFromDefinition(roleDef) : undefined,
@@ -605,11 +613,14 @@ export default function EmployeesPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Phone <span className="font-normal normal-case">(optional)</span>
                 </label>
-                <input
-                  type="tel"
+                <PhoneInput
+                  id="new-staff-phone"
+                  variant="crm"
+                  countryCode={newPhoneCountryCode}
+                  onCountryCodeChange={setNewPhoneCountryCode}
                   value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none"
+                  onChange={setNewPhone}
+                  placeholder="Enter phone number"
                 />
               </div>
               <div>
@@ -719,11 +730,14 @@ export default function EmployeesPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Phone <span className="font-normal normal-case">(optional)</span>
                 </label>
-                <input
-                  type="tel"
+                <PhoneInput
+                  id="edit-staff-phone"
+                  variant="crm"
+                  countryCode={editPhoneCountryCode}
+                  onCountryCodeChange={setEditPhoneCountryCode}
                   value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none"
+                  onChange={setEditPhone}
+                  placeholder="Enter phone number"
                 />
               </div>
               <div>

@@ -8,6 +8,9 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
 import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
 import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
+import { PhoneInput } from '@/components/ui/PhoneInput';
+import { defaultCountryCode } from '@/data/country-codes';
+import { formatFullPhone } from '@/lib/phone-input';
 import {
   Plus,
   Search,
@@ -51,6 +54,7 @@ export default function VendorsPage() {
   const [vType, setVType] = useState<'SERVICE' | 'PACKAGE'>('SERVICE');
   const [vEmail, setVEmail] = useState('');
   const [vPhone, setVPhone] = useState('');
+  const [vPhoneCountryCode, setVPhoneCountryCode] = useState(defaultCountryCode);
   const [vAddress, setVAddress] = useState('');
 
   // Rates add fields
@@ -94,13 +98,14 @@ export default function VendorsPage() {
         name: vName,
         type: vType,
         email: vEmail,
-        phone: vPhone,
+        phone: formatFullPhone(vPhoneCountryCode, vPhone),
         address: vAddress,
         rates: [{ name: 'Standard Room Rate', type: 'HOTEL', price: 6500 }],
       });
       setVName('');
       setVEmail('');
       setVPhone('');
+      setVPhoneCountryCode(defaultCountryCode);
       setVAddress('');
       setShowAddModal(false);
       setSelectedVendorId(created.id);
@@ -517,12 +522,14 @@ export default function VendorsPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Phone
                 </label>
-                <input
-                  type="text"
+                <PhoneInput
+                  id="vendor-phone"
+                  variant="crm"
+                  countryCode={vPhoneCountryCode}
+                  onCountryCodeChange={setVPhoneCountryCode}
                   value={vPhone}
-                  onChange={(e) => setVPhone(e.target.value)}
-                  placeholder="+91 194 245 7788"
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
+                  onChange={setVPhone}
+                  placeholder="Enter phone number"
                 />
               </div>
 

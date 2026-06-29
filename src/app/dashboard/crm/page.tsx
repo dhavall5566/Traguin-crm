@@ -14,6 +14,10 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
 import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
 import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
+import { DatePickerInput } from '@/components/ui/DatePickerInput';
+import { PhoneInput } from '@/components/ui/PhoneInput';
+import { defaultCountryCode } from '@/data/country-codes';
+import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import {
   LeadTimelineActivityBody,
   LeadTimelineNoteBody,
@@ -476,6 +480,7 @@ export default function CRMPage() {
   const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newPhoneCountryCode, setNewPhoneCountryCode] = useState(defaultCountryCode);
   const [newValue, setNewValue] = useState('');
   const [newSource, setNewSource] = useState('Website');
   const [newAssigned, setNewAssigned] = useState('');
@@ -529,6 +534,7 @@ export default function CRMPage() {
     setNewLastName('');
     setNewEmail('');
     setNewPhone('');
+    setNewPhoneCountryCode(defaultCountryCode);
     setNewValue('');
     setNewSource('Website');
     setNewAssigned('');
@@ -550,6 +556,7 @@ export default function CRMPage() {
       setNewLastName('');
       setNewEmail('');
       setNewPhone('');
+      setNewPhoneCountryCode(defaultCountryCode);
       setNewAssigned('');
       return;
     }
@@ -558,7 +565,9 @@ export default function CRMPage() {
     setNewFirstName(customer.firstName);
     setNewLastName(customer.lastName);
     setNewEmail(customer.email);
-    setNewPhone(customer.phone ?? '');
+    const parsedPhone = parsePhoneNumber(customer.phone);
+    setNewPhoneCountryCode(parsedPhone.countryCode);
+    setNewPhone(parsedPhone.localNumber);
     setNewAssigned(resolvePreviousAgentId(customerId));
   };
 
@@ -572,6 +581,7 @@ export default function CRMPage() {
       setNewLastName('');
       setNewEmail('');
       setNewPhone('');
+      setNewPhoneCountryCode(defaultCountryCode);
     }
   };
 
@@ -987,7 +997,7 @@ export default function CRMPage() {
           firstName: newFirstName,
           lastName: newLastName,
           email: newEmail || undefined,
-          phone: newPhone || undefined,
+          phone: formatFullPhone(newPhoneCountryCode, newPhone) || undefined,
           status: 'NEW',
           value: Number(newValue) || 0,
           source: newSource,
@@ -1733,17 +1743,15 @@ export default function CRMPage() {
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                     Phone Number
                   </label>
-                  <input
-                    type="text"
-                    readOnly={leadEntryMode === 'existing' && !!selectedCustomerId}
+                  <PhoneInput
+                    id="lead-phone"
+                    variant="crm"
+                    countryCode={newPhoneCountryCode}
+                    onCountryCodeChange={setNewPhoneCountryCode}
                     value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    
-                    className={`w-full px-3 py-2 rounded-lg border border-border focus:border-primary focus:outline-none ${
-                      leadEntryMode === 'existing' && selectedCustomerId
-                        ? 'bg-secondary/30 text-muted-foreground cursor-not-allowed'
-                        : 'bg-secondary/50'
-                    }`}
+                    onChange={setNewPhone}
+                    readOnly={leadEntryMode === 'existing' && !!selectedCustomerId}
+                    placeholder="Enter phone number"
                   />
                 </div>
               </div>
@@ -2204,13 +2212,12 @@ export default function CRMPage() {
                       Schedule follow-up
                     </span>
                     <div className="crm-lead-drawer__followup-fields">
-                      <input
-                        type="date"
+                      <DatePickerInput
                         required
                         value={followupDate}
                         onChange={(e) => setFollowupDate(e.target.value)}
-                        className="crm-lead-drawer__composer-input"
-                        style={{ maxWidth: '12rem' }}
+                        className="max-w-[12rem]"
+                        inputClassName="crm-lead-drawer__composer-input"
                       />
                       <input
                         type="text"

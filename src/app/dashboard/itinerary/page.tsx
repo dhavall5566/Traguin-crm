@@ -35,6 +35,7 @@ import {
   Wand2,
   Pencil,
 } from 'lucide-react';
+import { DatePickerInput } from '@/components/ui/DatePickerInput';
 
 const statusLabels: Record<Itinerary['status'], string> = {
   DRAFT: 'Draft',
@@ -1354,22 +1355,20 @@ export default function ItineraryPage() {
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                     Start Date
                   </label>
-                  <input
-                    type="date"
+                  <DatePickerInput
                     value={newStartDate}
                     onChange={(e) => setNewStartDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
+                    inputClassName="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                     End Date
                   </label>
-                  <input
-                    type="date"
+                  <DatePickerInput
                     value={newEndDate}
                     onChange={(e) => setNewEndDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
+                    inputClassName="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
                   />
                 </div>
               </div>

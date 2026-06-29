@@ -8,6 +8,10 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
 import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
 import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
+import { DatePickerInput } from '@/components/ui/DatePickerInput';
+import { PhoneInput } from '@/components/ui/PhoneInput';
+import { defaultCountryCode } from '@/data/country-codes';
+import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import { isEmailConflictError } from '@/lib/api/customers';
 import { 
   Users,
@@ -49,6 +53,7 @@ export default function CustomersPage() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneCountryCode, setPhoneCountryCode] = useState(defaultCountryCode);
   const [passportNumber, setPassportNumber] = useState('');
   const [passportExpiry, setPassportExpiry] = useState('');
 
@@ -83,6 +88,7 @@ export default function CustomersPage() {
     setLastName('');
     setEmail('');
     setPhone('');
+    setPhoneCountryCode(defaultCountryCode);
     setPassportNumber('');
     setPassportExpiry('');
     setFormError(null);
@@ -98,7 +104,9 @@ export default function CustomersPage() {
     setFirstName(cust.firstName);
     setLastName(cust.lastName);
     setEmail(cust.email);
-    setPhone(cust.phone ?? '');
+    const parsedPhone = parsePhoneNumber(cust.phone);
+    setPhoneCountryCode(parsedPhone.countryCode);
+    setPhone(parsedPhone.localNumber);
     setPassportNumber(cust.passportNumber ?? '');
     setPassportExpiry(cust.passportExpiry ?? '');
     setFormError(null);
@@ -112,12 +120,13 @@ export default function CustomersPage() {
       setSaving(true);
       setFormError(null);
       try {
+        const fullPhone = formatFullPhone(phoneCountryCode, phone);
         if (modalMode === 'create') {
           const created = await addCustomer({
             firstName,
             lastName,
             email,
-            phone,
+            phone: fullPhone || undefined,
             passportNumber: passportNumber || undefined,
             passportExpiry: passportExpiry || undefined,
           });
@@ -127,7 +136,7 @@ export default function CustomersPage() {
             firstName,
             lastName,
             email,
-            phone,
+            phone: fullPhone || undefined,
             passportNumber: passportNumber || undefined,
             passportExpiry: passportExpiry || undefined,
           });
@@ -597,12 +606,14 @@ export default function CustomersPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Phone Number
                 </label>
-                <input
-                  type="text"
+                <PhoneInput
+                  id="customer-phone"
+                  variant="crm"
+                  countryCode={phoneCountryCode}
+                  onCountryCodeChange={setPhoneCountryCode}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none"
+                  onChange={setPhone}
+                  placeholder="Enter phone number"
                 />
               </div>
 
@@ -623,11 +634,10 @@ export default function CustomersPage() {
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                     Passport Expiration
                   </label>
-                  <input
-                    type="date"
+                  <DatePickerInput
                     value={passportExpiry}
                     onChange={(e) => setPassportExpiry(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none"
+                    inputClassName="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:border-primary focus:outline-none"
                   />
                 </div>
               </div>

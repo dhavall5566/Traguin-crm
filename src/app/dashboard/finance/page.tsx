@@ -8,6 +8,7 @@ import { useClientPagination } from '@/hooks/useClientPagination';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
 import { CrmTableSkeleton } from '@/components/ui/CrmTableSkeleton';
 import { CrmTablePanel } from '@/components/ui/CrmTablePanel';
+import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { 
   Plus, 
   FileText, 
@@ -988,12 +989,11 @@ export default function FinancePage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Due date
                 </label>
-                <input
-                  type="date"
+                <DatePickerInput
                   required
                   value={invDueDate}
                   onChange={(e) => setInvDueDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
+                  inputClassName="w-full px-3 py-2 rounded-lg bg-secondary/50 border border-border focus:outline-none"
                 />
               </div>
               <div className="pt-2 flex justify-end space-x-2">
