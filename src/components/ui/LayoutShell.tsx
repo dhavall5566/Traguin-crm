@@ -20,8 +20,6 @@ import { prefetchCrmNavRoute } from '@/lib/api/crm-prefetch';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
 import { CRM_NAV_GROUPS, type CrmNavGroup } from '@/lib/crm-nav-config';
 import { getCrmBreadcrumbLabel } from '@/lib/crm-breadcrumbs';
-import { getCmsAppUrl } from '@/lib/admin-links';
-import { prefetchCrossApp } from '@/lib/cross-app-prefetch';
 import { traguinLogo, TRAGUIN_LOGO_SRC } from '@/lib/brand/traguin-logo';
 
 function SidebarNavGroups({
@@ -195,7 +193,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   }, [currentAgency.id, currentUser, roleDefinitions]);
 
   const breadcrumbLabel = getCrmBreadcrumbLabel(pathname);
-  const cmsUrl = getCmsAppUrl();
   const userInitials =
     (currentUser?.name ?? '?')
       .split(/\s+/)
@@ -232,10 +229,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
       group.items.forEach((item) => prefetchCrmNavRoute(item.href)),
     );
   }, [pathname, filteredNavGroups]);
-
-  useEffect(() => {
-    prefetchCrossApp(cmsUrl);
-  }, [cmsUrl]);
 
   const handleNavPrefetch = (href: string) => {
     prefetchCrmNavRoute(href);
@@ -302,16 +295,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         </div>
 
         <div className="flex items-center space-x-2">
-          <a
-            href={cmsUrl}
-            className="crm-switch-cms crm-switch-cms--topbar"
-            onMouseEnter={() => prefetchCrossApp(cmsUrl)}
-            onFocus={() => prefetchCrossApp(cmsUrl)}
-          >
-            <span className="hidden min-[420px]:inline">Switch to CMS</span>
-            <span className="min-[420px]:hidden">CMS</span>
-          </a>
-
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             className="crm-icon-btn"
@@ -380,15 +363,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           </div>
 
           <div className="crm-topbar__section crm-topbar__section--end">
-            <a
-              href={cmsUrl}
-              className="crm-switch-cms crm-switch-cms--topbar"
-              onMouseEnter={() => prefetchCrossApp(cmsUrl)}
-              onFocus={() => prefetchCrossApp(cmsUrl)}
-            >
-              Switch to CMS
-            </a>
-
             <button
               onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
               className="crm-icon-btn"
