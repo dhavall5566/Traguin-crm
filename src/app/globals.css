@@ -190,3 +190,58 @@ input[type="date"]::-webkit-calendar-picker-indicator,
   height: 0;
   pointer-events: none;
 }
+
+.crm-intake-panel {
+  border: 1px solid color-mix(in srgb, var(--gold) 22%, var(--border));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--gold) 6%, var(--surface));
+  padding: 1rem;
+}
+
+.crm-intake-panel__eyebrow {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.crm-intake-panel__title {
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.crm-intake-panel__grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+@media (min-width: 640px) {
+  .crm-intake-panel__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.crm-intake-detail dt {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-intake-detail dd {
+  margin-top: 0.2rem;
+  font-size: 0.84rem;
+  color: var(--foreground);
+  word-break: break-word;
+}
+
+.crm-intake-panel__meta {
+  margin-top: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}

@@ -22,6 +22,8 @@ import {
   LeadTimelineActivityBody,
   LeadTimelineNoteBody,
 } from '@/components/crm/LeadTimelineContent';
+import { LeadIntakeDetailsPanel } from '@/components/crm/LeadIntakeDetailsPanel';
+import { findLeadIntakeNote } from '@/lib/lead-intake-display';
 import { LeadTimelineAnimatedItem } from '@/components/crm/LeadTimelineAnimatedItem';
 import { sortTimelineItems, isRedundantNoteActivity, dedupeAccidentalNotes, isPendingTimelineItem } from '@/lib/lead-timeline-format';
 import {
@@ -370,6 +372,11 @@ export default function CRMPage() {
     ];
     return sortTimelineItems(entries);
   }, [selectedLeadId, leadNotes, leadActivities, leadFollowups]);
+
+  const selectedLeadIntake = useMemo(() => {
+    if (!selectedLeadId) return null;
+    return findLeadIntakeNote(leadNotes.filter((n) => n.leadId === selectedLeadId));
+  }, [selectedLeadId, leadNotes]);
 
   useEffect(() => {
     const el = timelineScrollRef.current;
@@ -2012,6 +2019,10 @@ export default function CRMPage() {
                     </div>
                   </div>
                 </section>
+
+                {selectedLeadIntake ? (
+                  <LeadIntakeDetailsPanel intake={selectedLeadIntake} />
+                ) : null}
 
                 <section className="crm-lead-drawer__section">
                   <h3 className="crm-lead-drawer__section-title">Message</h3>
