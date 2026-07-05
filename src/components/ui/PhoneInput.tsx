@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { PhoneCountrySelect } from "@/components/ui/PhoneCountrySelect";
+import { LOCAL_PHONE_LENGTH, sanitizeLocalPhoneInput } from "@/lib/phone-input";
 import { cn } from "@/lib/utils";
 
 type PhoneInputVariant = "form" | "hero" | "crm";
@@ -48,7 +49,7 @@ export function PhoneInput({
   onChange,
   variant = "form",
   invalid = false,
-  placeholder = "Enter phone number",
+  placeholder = "10-digit mobile number",
   autoComplete = "tel",
   readOnly = false,
   className,
@@ -79,12 +80,14 @@ export function PhoneInput({
       <input
         id={id}
         type="tel"
-        inputMode="tel"
+        inputMode="numeric"
         autoComplete={autoComplete}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(sanitizeLocalPhoneInput(e.target.value))}
         readOnly={readOnly}
         placeholder={placeholder}
+        maxLength={LOCAL_PHONE_LENGTH}
+        pattern="[0-9]{10}"
         className={cn(
           "min-w-0 h-full w-full border-0 bg-transparent outline-none",
           inputClass[variant],

@@ -21,6 +21,7 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 
 const BOOKING_STATUSES: Booking['status'][] = [
   'PENDING',
@@ -122,9 +123,12 @@ export default function BookingsPage() {
       patchCrmWorkspaceItem(CRM_CACHE.bookings, bookingId, mapped);
       invalidateCrmListCache(CRM_CACHE.bookings);
       await refresh();
+      crmToastSuccess('Booking status updated');
     } catch (error) {
       patchCrmWorkspaceItem(CRM_CACHE.bookings, bookingId, { status: existing.status });
-      setActionError(error instanceof Error ? error.message : 'Failed to update booking status');
+      const message = error instanceof Error ? error.message : 'Failed to update booking status';
+      setActionError(message);
+      crmToastError(message);
     } finally {
       setSavingStatusId(null);
     }

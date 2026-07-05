@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   appendCustomerDocument,
   createCustomer,
@@ -11,6 +11,7 @@ import {
   type CustomerCreateInput,
   type CustomerUpdateInput,
 } from "@/lib/api/customers";
+import { onCustomerWorkspaceUpsert } from "@/lib/api/customer-workspace-sync";
 import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
 import {
   CRM_CACHE,
@@ -46,6 +47,15 @@ export function useCustomersPage() {
       return next;
     });
     return record;
+  }, [setCustomers]);
+
+  useEffect(() => {
+    return onCustomerWorkspaceUpsert((customer) => {
+      setCustomers((prev) => {
+        if (prev.some((row) => row.id === customer.id)) return prev;
+        return [customer, ...prev];
+      });
+    });
   }, [setCustomers]);
 
   const addCustomer = useCallback(

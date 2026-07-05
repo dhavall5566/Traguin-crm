@@ -1,5 +1,10 @@
 import { crmFetch, crmFetchJson } from "@/lib/api/crm-client";
 import { clampListLimit } from "@/lib/api/pagination";
+import {
+  leadDetailsToUpdateInput,
+  pickLeadDetails,
+  type LeadDetailsFields,
+} from "@/lib/lead-details";
 import type { Lead, LeadActivity, LeadFollowup, LeadNote } from "@/lib/store";
 
 /** API snake_case shapes (CRM backend). */
@@ -33,6 +38,7 @@ type ApiLeadFollowup = {
 export type ApiLeadRead = {
   id: string;
   agency_id: string;
+  lead_code: string | null;
   title: string;
   first_name: string;
   last_name: string;
@@ -45,6 +51,31 @@ export type ApiLeadRead = {
   customer_id: string | null;
   proposal_sent_at: string | null;
   message: string | null;
+  travel_date: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  pincode: string | null;
+  state: string | null;
+  country: string | null;
+  adults_count: number | null;
+  children_count: number | null;
+  children_ages: number[] | null;
+  travel_type: string | null;
+  arrival_date: string | null;
+  hotel_category: string | null;
+  meal_category: string | null;
+  travel_destination: string | null;
+  occasion: string | null;
+  flight_type: string | null;
+  extra_baggage: string | null;
+  wheelchair_assistance: string | null;
+  visa_assistance: string | null;
+  travel_insurance: string | null;
+  transportation: string | null;
+  package_mode: string | null;
+  cms_form_submission_id: string | null;
+  cms_package_id: string | null;
   created_at: string;
   updated_at: string;
   notes: ApiLeadNote[];
@@ -91,6 +122,7 @@ export type LeadCreateInput = {
   status?: Lead["status"];
   value?: number;
   assignedToId?: string;
+  customerId?: string;
   message?: string;
 };
 
@@ -107,8 +139,65 @@ export type LeadUpdateInput = Partial<
     | "value"
     | "assignedToId"
     | "message"
+    | "cmsPackageId"
+    | keyof LeadDetailsFields
   >
 >;
+
+const LEAD_DETAIL_KEYS: (keyof LeadDetailsFields)[] = [
+  "travelDate",
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "pincode",
+  "state",
+  "country",
+  "adultsCount",
+  "childrenCount",
+  "childrenAges",
+  "travelType",
+  "arrivalDate",
+  "hotelCategory",
+  "mealCategory",
+  "travelDestination",
+  "occasion",
+  "flightType",
+  "extraBaggage",
+  "wheelchairAssistance",
+  "visaAssistance",
+  "travelInsurance",
+  "transportation",
+  "packageMode",
+];
+
+function mapDetailsFromApi(lead: ApiLeadRead): LeadDetailsFields {
+  return pickLeadDetails({
+    travelDate: lead.travel_date ?? undefined,
+    addressLine1: lead.address_line1 ?? undefined,
+    addressLine2: lead.address_line2 ?? undefined,
+    city: lead.city ?? undefined,
+    pincode: lead.pincode ?? undefined,
+    state: lead.state ?? undefined,
+    country: lead.country ?? undefined,
+    adultsCount: lead.adults_count ?? undefined,
+    childrenCount: lead.children_count ?? undefined,
+    childrenAges: lead.children_ages ?? undefined,
+    travelType: (lead.travel_type as LeadDetailsFields["travelType"]) ?? undefined,
+    arrivalDate: lead.arrival_date ?? undefined,
+    hotelCategory: (lead.hotel_category as LeadDetailsFields["hotelCategory"]) ?? undefined,
+    mealCategory: (lead.meal_category as LeadDetailsFields["mealCategory"]) ?? undefined,
+    travelDestination: lead.travel_destination ?? undefined,
+    occasion: (lead.occasion as LeadDetailsFields["occasion"]) ?? undefined,
+    flightType: (lead.flight_type as LeadDetailsFields["flightType"]) ?? undefined,
+    extraBaggage: (lead.extra_baggage as LeadDetailsFields["extraBaggage"]) ?? undefined,
+    wheelchairAssistance:
+      (lead.wheelchair_assistance as LeadDetailsFields["wheelchairAssistance"]) ?? undefined,
+    visaAssistance: (lead.visa_assistance as LeadDetailsFields["visaAssistance"]) ?? undefined,
+    travelInsurance: (lead.travel_insurance as LeadDetailsFields["travelInsurance"]) ?? undefined,
+    transportation: (lead.transportation as LeadDetailsFields["transportation"]) ?? undefined,
+    packageMode: (lead.package_mode as LeadDetailsFields["packageMode"]) ?? undefined,
+  });
+}
 
 const LEAD_EXTRAS_KEY = "travelcrm:leadExtras";
 
@@ -169,6 +258,7 @@ export function mapLeadFromApi(
   return {
     id: lead.id,
     agencyId: lead.agency_id,
+    leadCode: lead.lead_code ?? undefined,
     title: lead.title,
     firstName: lead.first_name,
     lastName: lead.last_name,
@@ -184,6 +274,9 @@ export function mapLeadFromApi(
     proposalItineraryId: extras?.proposalItineraryId,
     proposalSentAt: lead.proposal_sent_at ?? undefined,
     message: lead.message ?? undefined,
+    cmsFormSubmissionId: lead.cms_form_submission_id ?? undefined,
+    cmsPackageId: lead.cms_package_id ?? undefined,
+    ...mapDetailsFromApi(lead),
     notes: lead.notes.map((n) => mapNoteFromApi(n, userNameById)),
     activities: lead.activities.map((a) => mapActivityFromApi(a, userNameById)),
     followups: lead.followups.map((f) => mapFollowupFromApi(f, userNameById)),
@@ -202,6 +295,7 @@ function leadToApiCreateBody(input: LeadCreateInput) {
     value: input.value ?? 0,
     assigned_to_id: input.assignedToId || null,
     message: input.message?.trim() || null,
+    customer_id: input.customerId || null,
   };
 }
 
@@ -217,6 +311,10 @@ function leadToApiUpdateBody(input: LeadUpdateInput) {
   if (input.value !== undefined) body.value = input.value;
   if (input.assignedToId !== undefined) body.assigned_to_id = input.assignedToId || null;
   if (input.message !== undefined) body.message = input.message?.trim() || null;
+  if (input.cmsPackageId !== undefined) body.cms_package_id = input.cmsPackageId || null;
+  if (LEAD_DETAIL_KEYS.some((key) => key in input)) {
+    Object.assign(body, leadDetailsToUpdateInput(pickLeadDetails(input)));
+  }
   return body;
 }
 
@@ -265,6 +363,24 @@ export async function listLeads(params?: {
 
 export async function listPendingLeadFollowups(): Promise<ApiLeadFollowup[]> {
   return crmFetchJson<ApiLeadFollowup[]>("/api/crm/leads/followups/pending");
+}
+
+export type ApiLeadRecentEvent = {
+  id: string;
+  lead_code: string | null;
+  title: string;
+  first_name: string;
+  last_name: string;
+  source: string | null;
+  created_at: string;
+  updated_at: string;
+  kind: "new" | "returning";
+};
+
+export async function fetchRecentLeadEvents(since: string): Promise<ApiLeadRecentEvent[]> {
+  const qs = new URLSearchParams();
+  qs.set('since', since);
+  return crmFetchJson<ApiLeadRecentEvent[]>(`/api/crm/leads/recent?${qs.toString()}`);
 }
 
 export async function getLead(id: string): Promise<ApiLeadRead> {

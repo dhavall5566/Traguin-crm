@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   Map,
   Layers,
+  Package,
   CalendarRange,
   ClipboardList,
   Settings,
@@ -70,6 +71,12 @@ export const CRM_NAV_GROUPS: CrmNavGroup[] = [
   {
     label: "Catalog",
     items: [
+      {
+        name: "Packages",
+        href: "/dashboard/packages",
+        icon: Package,
+        rbacModule: RBAC_NAV_MODULE["/dashboard/itinerary"],
+      },
       {
         name: "Trip planner",
         href: "/dashboard/itinerary",

@@ -13,6 +13,7 @@ import { PhoneInput } from '@/components/ui/PhoneInput';
 import { defaultCountryCode } from '@/data/country-codes';
 import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import { isEmailConflictError } from '@/lib/api/customers';
+import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 import { 
   Users,
   Plus,
@@ -60,7 +61,6 @@ export default function CustomersPage() {
   // Upload fields
   const [docName, setDocName] = useState('');
   const [docCategory, setDocCategory] = useState('Passport');
-  const [docUploaded, setDocUploaded] = useState(false);
 
   const agencyCustomers = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
@@ -131,6 +131,7 @@ export default function CustomersPage() {
             passportExpiry: passportExpiry || undefined,
           });
           setSelectedCustomer(created);
+          crmToastSuccess('Customer created');
         } else if (selectedCustomer) {
           const updated = await updateCustomer(selectedCustomer.id, {
             firstName,
@@ -141,14 +142,20 @@ export default function CustomersPage() {
             passportExpiry: passportExpiry || undefined,
           });
           setSelectedCustomer(updated);
+          crmToastSuccess('Customer updated');
         }
         resetForm();
         setShowModal(false);
       } catch (err) {
         if (isEmailConflictError(err)) {
-          setFormError('A customer with this email already exists in your agency. Use a different email or edit the existing profile.');
+          const message =
+            'A customer with this email already exists in your agency. Use a different email or edit the existing profile.';
+          setFormError(message);
+          crmToastError(message);
         } else {
-          setFormError(err instanceof Error ? err.message : 'Could not save customer');
+          const message = err instanceof Error ? err.message : 'Could not save customer';
+          setFormError(message);
+          crmToastError(message);
         }
       } finally {
         setSaving(false);
@@ -169,10 +176,9 @@ export default function CustomersPage() {
         });
         setSelectedCustomer(updated);
         setDocName('');
-        setDocUploaded(true);
-        setTimeout(() => setDocUploaded(false), 2000);
+        crmToastSuccess('Document uploaded');
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Upload failed');
+        crmToastError(err instanceof Error ? err.message : 'Upload failed');
       }
     })();
   };
@@ -184,8 +190,9 @@ export default function CustomersPage() {
       try {
         await deleteCustomer(selectedCustomer.id);
         setSelectedCustomer(null);
+        crmToastSuccess('Customer deleted');
       } catch (err) {
-        window.alert(err instanceof Error ? err.message : 'Delete failed');
+        crmToastError(err instanceof Error ? err.message : 'Delete failed');
       }
     })();
   };
@@ -492,12 +499,6 @@ export default function CustomersPage() {
                   Stores filename metadata in the customer record (url remains placeholder). Real file storage is not wired yet.
                 </p>
                 
-                {docUploaded && (
-                  <div className="p-2 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold text-center border border-emerald-500/20">
-                    File uploaded & RLS encrypted successfully!
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <div className="grid grid-cols-2 gap-2">
                     <select

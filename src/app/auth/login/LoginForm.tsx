@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { traguinLogo } from '@/lib/brand/traguin-logo';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -84,14 +85,13 @@ export default function LoginForm() {
           <label htmlFor="crm-login-password" className="crm-login-label">
             Password
           </label>
-          <input
+          <PasswordInput
             id="crm-login-password"
-            type="password"
+            variant="login"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
-            className="crm-login-input"
           />
         </div>
         <button type="submit" disabled={loading} className="crm-login-submit">

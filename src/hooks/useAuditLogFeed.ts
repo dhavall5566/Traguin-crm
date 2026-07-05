@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { listAuditLogs, mapAuditLogFromApi, type ApiAuditLogRead } from "@/lib/api/audit-logs";
+import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
 import { CRM_CACHE, getCrmWorkspaceList } from "@/lib/api/crm-workspace-store";
 import { bindCrmListFetch } from "@/lib/api/pagination";
 import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
 import { loadStaffDirectory } from "@/lib/api/staff-directory";
 import { userNameMap } from "@/lib/api/users";
+import { CRM_LEAD_INBOUND_EVENT } from "@/hooks/useLeadRealtimeNotifications";
 import type { AuditLog } from "@/lib/store";
 
 let auditLoadInFlight: Promise<void> | null = null;
@@ -96,6 +98,19 @@ export function useAuditLogFeed(enabled = true) {
       controller.abort();
     };
   }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- cache read once on mount
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const refreshAuditLogs = () => {
+      invalidateCrmListCache(CRM_CACHE.auditLogs);
+      const controller = new AbortController();
+      void loadAuditFeed(setAuditLogs, controller.signal);
+    };
+
+    window.addEventListener(CRM_LEAD_INBOUND_EVENT, refreshAuditLogs);
+    return () => window.removeEventListener(CRM_LEAD_INBOUND_EVENT, refreshAuditLogs);
+  }, [enabled]);
 
   return { auditLogs, loading };
 }

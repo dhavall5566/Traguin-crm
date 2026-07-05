@@ -25,7 +25,17 @@ import {
 import { LeadIntakeDetailsPanel } from '@/components/crm/LeadIntakeDetailsPanel';
 import { findLeadIntakeNote } from '@/lib/lead-intake-display';
 import { LeadTimelineAnimatedItem } from '@/components/crm/LeadTimelineAnimatedItem';
+import { LeadDetailsForm } from '@/components/crm/LeadDetailsForm';
+import { useCmsPackageSummary, usePackagesForDestination } from '@/hooks/usePackagesCatalog';
 import { sortTimelineItems, isRedundantNoteActivity, dedupeAccidentalNotes, isPendingTimelineItem } from '@/lib/lead-timeline-format';
+import { formatLeadDisplayCode, leadCodeLegendHint, buildActiveLegendEntries } from '@/lib/lead-codes';
+import { LeadIdLegend } from '@/components/crm/LeadIdLegend';
+import { crmToastError, crmToastInfo, crmToastSuccess } from '@/lib/crm-toast-bus';
+import {
+  pickLeadDetails,
+  leadDetailsEqual,
+  type LeadDetailsFields,
+} from '@/lib/lead-details';
 import {
   CrmItineraryCreationIntent,
   STORAGE_CREATE_ITIN_FROM_CRM,
@@ -46,9 +56,10 @@ import {
   Check,
 } from 'lucide-react';
 
-type LeadDetailDraft = Pick<Lead, 'status' | 'value' | 'assignedToId'> & {
+type LeadDetailDraft = Pick<Lead, 'status' | 'value' | 'assignedToId' | 'cmsPackageId'> & {
   source: string;
   message: string;
+  details: LeadDetailsFields;
 };
 
 const stages = [
@@ -147,14 +158,19 @@ export default function CRMPage() {
   const [creatingBooking, setCreatingBooking] = useState(false);
   const creatingBookingRef = useRef(false);
 
-  const runLeadAction = async (label: string, fn: () => Promise<void>) => {
+  const runLeadAction = async (
+    label: string,
+    fn: () => Promise<void>,
+    successMessage?: string,
+  ) => {
     setActionError(null);
     try {
       await fn();
+      crmToastSuccess(successMessage ?? `${label} completed`);
     } catch (e) {
       const message = e instanceof Error ? e.message : `${label} failed`;
       setActionError(message);
-      if (typeof window !== 'undefined') window.alert(message);
+      crmToastError(message);
     }
   };
   // Search & Filter state
@@ -212,13 +228,6 @@ export default function CRMPage() {
     null,
   );
 
-  const [saveToastVisible, setSaveToastVisible] = useState(false);
-  useEffect(() => {
-    if (!saveToastVisible) return undefined;
-    const t = window.setTimeout(() => setSaveToastVisible(false), 2800);
-    return () => window.clearTimeout(t);
-  }, [saveToastVisible]);
-
   /** Editable snapshot for drawer pipeline fields until user clicks Save */
   const [leadDetailDraft, setLeadDetailDraft] = useState<LeadDetailDraft | null>(null);
   const leadDetailHydratedForIdRef = useRef<string | null>(null);
@@ -272,8 +281,10 @@ export default function CRMPage() {
         status: snap.status,
         value: snap.value,
         assignedToId: snap.assignedToId,
+        cmsPackageId: snap.cmsPackageId,
         source: snap.source ?? '',
         message: snap.message ?? '',
+        details: pickLeadDetails(snap),
       });
     }
   }, [selectedLeadId, leads, currentAgency.id]);
@@ -290,10 +301,15 @@ export default function CRMPage() {
       status: selectedLead.status,
       value: selectedLead.value,
       assignedToId: selectedLead.assignedToId,
+      cmsPackageId: selectedLead.cmsPackageId,
       source: selectedLead.source ?? '',
       message: selectedLead.message ?? '',
+      details: pickLeadDetails(selectedLead),
     };
   }, [selectedLead, selectedLeadId, leadDetailDraft]);
+
+  const destinationPackages = usePackagesForDestination(pipelineDraft?.details.travelDestination);
+  const { summary: selectedProposalPackage } = useCmsPackageSummary(pipelineDraft?.cmsPackageId);
 
   /** Deal estimate shown in drawer: itinerary retail total when a proposal is picked, otherwise stored lead.value */
   const drawerResolvedDealValue = useMemo(() => {
@@ -313,8 +329,9 @@ export default function CRMPage() {
       pipelineDraft.status !== selectedLead.status ||
       drawerResolvedDealValue !== Number(selectedLead.value) ||
       (pipelineDraft.assignedToId || '') !== (selectedLead.assignedToId || '') ||
-      (pipelineDraft.source || '') !== (selectedLead.source || '') ||
-      (pipelineDraft.message || '') !== (selectedLead.message || '')
+      (pipelineDraft.message || '') !== (selectedLead.message || '') ||
+      (pipelineDraft.cmsPackageId || '') !== (selectedLead.cmsPackageId || '') ||
+      !leadDetailsEqual(pipelineDraft.details, pickLeadDetails(selectedLead))
     );
   }, [selectedLead, pipelineDraft, drawerResolvedDealValue]);
 
@@ -412,8 +429,10 @@ export default function CRMPage() {
           status: selectedLead.status,
           value: selectedLead.value,
           assignedToId: selectedLead.assignedToId,
+          cmsPackageId: selectedLead.cmsPackageId,
           source: selectedLead.source ?? '',
           message: selectedLead.message ?? '',
+          details: pickLeadDetails(selectedLead),
         };
       return { ...base, ...patch };
     });
@@ -439,11 +458,16 @@ export default function CRMPage() {
         const nextAssign = pipelineDraft.assignedToId || undefined;
         const curAssign = selectedLead.assignedToId ?? undefined;
         if (nextAssign !== curAssign) updates.assignedToId = nextAssign;
-        if ((pipelineDraft.source || '') !== (selectedLead.source || '')) {
-          updates.source = pipelineDraft.source;
-        }
         if ((pipelineDraft.message || '') !== (selectedLead.message || '')) {
           updates.message = pipelineDraft.message.trim() || undefined;
+        }
+        const nextPackage = pipelineDraft.cmsPackageId || undefined;
+        const curPackage = selectedLead.cmsPackageId ?? undefined;
+        if (nextPackage !== curPackage) {
+          updates.cmsPackageId = nextPackage;
+        }
+        if (!leadDetailsEqual(pipelineDraft.details, pickLeadDetails(selectedLead))) {
+          Object.assign(updates, pickLeadDetails(pipelineDraft.details));
         }
         if (
           (bookingItineraryId || '') !== ((selectedLead.proposalItineraryId ?? '') || '')
@@ -459,16 +483,17 @@ export default function CRMPage() {
           status: pipelineDraft.status,
           value: drawerResolvedDealValue,
           assignedToId: pipelineDraft.assignedToId,
+          cmsPackageId: pipelineDraft.cmsPackageId,
           source: pipelineDraft.source ?? '',
           message: pipelineDraft.message ?? '',
+          details: pickLeadDetails(pipelineDraft.details),
         });
 
-        setSaveToastVisible(true);
         setSelectedLeadId(null);
       } finally {
         setSavingLead(false);
       }
-    });
+    }, 'Lead saved');
   };
 
   const requestCloseLeadDrawer = () => {
@@ -514,7 +539,9 @@ export default function CRMPage() {
     const customer = agencyCustomers.find((c) => c.id === customerId);
     if (!customer) return '';
 
-    const previousLead = leads
+    const activeStaffIds = new Set(staff.map((u) => u.id));
+
+    const firstHandledLead = leads
       .filter((l) => l.agencyId === currentAgency.id && l.assignedToId)
       .filter(
         (l) =>
@@ -522,9 +549,10 @@ export default function CRMPage() {
           (customer.email && l.email?.toLowerCase() === customer.email.toLowerCase()) ||
           (l.firstName === customer.firstName && l.lastName === customer.lastName)
       )
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .find((l) => l.assignedToId && activeStaffIds.has(l.assignedToId));
 
-    return previousLead?.assignedToId ?? '';
+    return firstHandledLead?.assignedToId ?? '';
   };
 
   const resetLeadForm = () => {
@@ -629,6 +657,11 @@ export default function CRMPage() {
       });
   }, [leads, currentAgency.id, debouncedSearch, filterAgent, sortBy, statsPeriod]);
 
+  const leadAbbrevLegendEntries = useMemo(() => {
+    const agencyOnly = leads.filter((l) => l.agencyId === currentAgency.id);
+    return buildActiveLegendEntries(agencyOnly);
+  }, [leads, currentAgency.id]);
+
   // Get staff for dropdown list (loaded from CRM API)
   const previousAgentName = staff.find((u) => u.id === newAssigned)?.name;
 
@@ -666,11 +699,6 @@ export default function CRMPage() {
       total: agency.length,
     };
   }, [leads, currentAgency.id, statsPeriod]);
-
-  const formatLeadId = (id: string) => {
-    const compact = id.replace(/-/g, '').slice(-8).toUpperCase();
-    return `LD-${new Date().getFullYear()}-${compact}`;
-  };
 
   const bookableItineraries = useMemo(() => {
     const withDays = itineraries.filter(
@@ -875,8 +903,8 @@ export default function CRMPage() {
     if (creatingBookingRef.current) return;
 
     if (hasOutstandingInvoiceForLeadTraveller) {
-      alert(
-        'This traveller already has an unpaid or partially paid invoice in Billing. Record payment (or close the balance) before creating another booking with a draft invoice.',
+      crmToastInfo(
+        'This traveller already has an unpaid or partially paid invoice in Billing. Record payment before creating another booking.',
       );
       return;
     }
@@ -890,7 +918,7 @@ export default function CRMPage() {
       ''
     ).trim();
     if (!itineraryId) {
-      alert('Pick an itinerary to attach to this booking.');
+      crmToastInfo('Pick an itinerary to attach to this booking.');
       return;
     }
 
@@ -901,7 +929,7 @@ export default function CRMPage() {
         b.itineraryId === itineraryId,
     );
     if (duplicate) {
-      alert(
+      crmToastInfo(
         'A booking already exists for this itinerary. Open Billing & ERP Finance for invoice details.',
       );
       return;
@@ -911,9 +939,14 @@ export default function CRMPage() {
       (i) => i.id === itineraryId && i.agencyId === currentAgency.id,
     );
     if (!itinerary) {
-      alert(
+      crmToastInfo(
         'Itinerary not found for this workspace. Pick a trip from the list or open Trip planner.',
       );
+      return;
+    }
+
+    if (!cid) {
+      crmToastInfo('Link or create a customer profile before converting to a booking.');
       return;
     }
 
@@ -922,11 +955,6 @@ export default function CRMPage() {
 
     void runLeadAction('Create booking', async () => {
       try {
-        if (!cid) {
-          alert('Link or create a customer profile before converting to a booking.');
-          return;
-        }
-
         if (cid && cid !== (selectedLead.customerId || '').trim()) {
           await updateLead(selectedLead.id, { customerId: cid });
         }
@@ -975,8 +1003,8 @@ export default function CRMPage() {
         await bookingNotePromise;
 
         if (!draftedInvoice) {
-          alert(
-            'Booking was created, but no draft invoice was generated (trip data may be out of sync). You were taken to Billing — use “Record payment” on the invoice if it appears.',
+          crmToastInfo(
+            'Booking created, but no draft invoice was generated. Check Billing if the invoice appears.',
           );
         }
 
@@ -987,7 +1015,7 @@ export default function CRMPage() {
         creatingBookingRef.current = false;
         setCreatingBooking(false);
       }
-    });
+    }, 'Booking created');
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -1020,7 +1048,7 @@ export default function CRMPage() {
         creatingLeadRef.current = false;
         setCreatingLead(false);
       }
-    });
+    }, 'Lead created');
   };
 
   const handleAddNote = (e: React.FormEvent) => {
@@ -1039,11 +1067,15 @@ export default function CRMPage() {
 
     markTimelineEnter(`note-${tempId}`);
 
-    void promise.catch((error) => {
+    void promise
+      .then(() => {
+        crmToastSuccess('Note added');
+      })
+      .catch((error) => {
       setNoteContent(content);
       const message = error instanceof Error ? error.message : 'Add note failed';
       setActionError(message);
-      if (typeof window !== 'undefined') window.alert(message);
+      crmToastError(message);
     });
   };
 
@@ -1071,17 +1103,21 @@ export default function CRMPage() {
 
     markTimelineEnter(`fup-${tempId}`);
 
-    void promise.catch((error) => {
+    void promise
+      .then(() => {
+        crmToastSuccess('Follow-up scheduled');
+      })
+      .catch((error) => {
       setFollowupDate(dateDraft);
       setFollowupNotes(notes);
       const message = error instanceof Error ? error.message : 'Schedule followup failed';
       setActionError(message);
-      if (typeof window !== 'undefined') window.alert(message);
+      crmToastError(message);
     });
   };
 
   const handleStatusChange = (leadId: string, status: Lead['status']) => {
-    void runLeadAction('Update status', () => updateLeadStatus(leadId, status));
+    void runLeadAction('Update status', () => updateLeadStatus(leadId, status), 'Status updated');
   };
 
   const handleRefreshLeads = () => {
@@ -1098,14 +1134,6 @@ export default function CRMPage() {
 
   return (
     <>
-      {saveToastVisible && (
-        <div
-          role="status"
-          className="pointer-events-none fixed bottom-6 left-1/2 z-[100] -translate-x-1/2 rounded-lg border border-border bg-card px-4 py-2.5 text-xs font-semibold shadow-lg shadow-black/20"
-        >
-          Changes saved successfully
-        </div>
-      )}
     <div className="space-y-5">
       <div className="crm-page-header">
         <div>
@@ -1271,6 +1299,8 @@ export default function CRMPage() {
         </div>
       </div>
 
+      <LeadIdLegend entries={leadAbbrevLegendEntries} />
+
       {leadView === 'kanban' && (
       /* Kanban Board Layout */
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto pb-4">
@@ -1308,8 +1338,8 @@ export default function CRMPage() {
                       className="p-3 bg-card border border-border/60 rounded-lg hover:border-indigo-500/40 hover:shadow-md cursor-pointer transition-all hover-card-trigger space-y-2 relative"
                     >
                       <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                          {lead.source || 'Direct'}
+                        <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-1.5 py-0.5 rounded truncate max-w-[5.75rem] tabular-nums">
+                          {formatLeadDisplayCode(lead)}
                         </span>
                         <span className="text-[10px] font-bold text-emerald-500">
                           ₹{Number(lead.value).toLocaleString('en-IN')}
@@ -1437,7 +1467,7 @@ export default function CRMPage() {
           <table className="crm-data-table min-w-[720px]">
             <thead>
               <tr>
-                <th>Lead ID</th>
+                <th title="TRG###-XX — see abbreviation key below">Lead ID</th>
                 <th>Contact</th>
                 <th>Destination</th>
                 <th>Source</th>
@@ -1464,8 +1494,11 @@ export default function CRMPage() {
                     onClick={() => selectLeadOpeningDrawer(lead.id)}
                     className="cursor-pointer transition-colors"
                   >
-                    <td className="crm-lead-id whitespace-nowrap">
-                      {formatLeadId(lead.id)}
+                    <td
+                      className="crm-lead-id whitespace-nowrap"
+                      title={leadCodeLegendHint(lead.leadCode) ?? undefined}
+                    >
+                      {formatLeadDisplayCode(lead)}
                     </td>
                     <td>
                       <div className="font-medium text-foreground">
@@ -1829,7 +1862,12 @@ export default function CRMPage() {
           <div className="crm-lead-drawer animate-scale-in">
             <header className="crm-lead-drawer__header">
               <div className="min-w-0 flex-1">
-                <span className="crm-lead-drawer__eyebrow">Lead card</span>
+                <span
+                  className="crm-lead-drawer__eyebrow"
+                  title={leadCodeLegendHint(selectedLead.leadCode) ?? undefined}
+                >
+                  {formatLeadDisplayCode(selectedLead)}
+                </span>
                 <h2 id="lead-drawer-title" className="crm-lead-drawer__title">
                   {selectedLead.title}
                 </h2>
@@ -1986,9 +2024,11 @@ export default function CRMPage() {
                       <input
                         id={`lead-source-${selectedLead.id}`}
                         type="text"
-                        value={pipelineDraft.source ?? ''}
-                        onChange={(e) => setDrawerPipeline({ source: e.target.value })}
-                        className="crm-lead-drawer__input"
+                        readOnly
+                        value={(pipelineDraft.source ?? selectedLead.source ?? '').trim() || 'Manual CRM input'}
+                        className="crm-lead-drawer__input cursor-not-allowed bg-secondary/30"
+                        tabIndex={-1}
+                        aria-readonly="true"
                       />
                     </div>
                   </div>
@@ -2042,13 +2082,67 @@ export default function CRMPage() {
                   />
                 </section>
 
+                <LeadDetailsForm
+                  leadId={selectedLead.id}
+                  value={pipelineDraft.details}
+                  onChange={(patch) =>
+                    setDrawerPipeline({
+                      details: { ...pipelineDraft.details, ...patch },
+                    })
+                  }
+                />
+
                 <section className="crm-lead-drawer__section crm-lead-drawer__booking">
                   <h3 className="crm-lead-drawer__booking-title">
                     <ClipboardList className="h-4 w-4 text-[var(--gold)]" aria-hidden />
                     Convert to booking &amp; invoice
                   </h3>
-                  <label className="crm-lead-drawer__field-label" htmlFor={`lead-itin-${selectedLead.id}`}>
-                    Proposal / itinerary ({bookableItineraries.length})
+                  <label className="crm-lead-drawer__field-label" htmlFor={`lead-package-${selectedLead.id}`}>
+                    Proposal / package ({destinationPackages.packages.length})
+                  </label>
+                  <select
+                    id={`lead-package-${selectedLead.id}`}
+                    value={pipelineDraft.cmsPackageId ?? ''}
+                    onChange={(e) => setDrawerPipeline({ cmsPackageId: e.target.value || undefined })}
+                    className="crm-lead-drawer__select"
+                    disabled={!destinationPackages.hasDestination && !pipelineDraft.cmsPackageId}
+                  >
+                    <option value="">
+                      {destinationPackages.hasDestination
+                        ? 'Choose package…'
+                        : 'Enter destination in Details first…'}
+                    </option>
+                    {pipelineDraft.cmsPackageId &&
+                    !destinationPackages.packages.some((p) => p.id === pipelineDraft.cmsPackageId) ? (
+                      <option value={pipelineDraft.cmsPackageId}>
+                        {selectedProposalPackage
+                          ? `${selectedProposalPackage.title} · ${selectedProposalPackage.durationLabel} · ₹${selectedProposalPackage.price.toLocaleString('en-IN')}`
+                          : 'Linked package…'}
+                      </option>
+                    ) : null}
+                    {destinationPackages.packages.map((pkg) => (
+                      <option key={pkg.id} value={pkg.id}>
+                        {pkg.title} · {pkg.durationLabel} · ₹{pkg.price.toLocaleString('en-IN')}
+                        {pkg.destinationName ? ` · ${pkg.destinationName}` : ''}
+                        {!pkg.isPublished ? ' · Internal' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {destinationPackages.loading ? (
+                    <p className="crm-lead-drawer__hint">Loading packages for “{destinationPackages.destinationQuery}”…</p>
+                  ) : null}
+                  {!destinationPackages.loading && destinationPackages.hasDestination && destinationPackages.packages.length === 0 ? (
+                    <p className="crm-lead-drawer__hint">
+                      No CMS packages match “{destinationPackages.destinationQuery}”. Try the exact destination name or check the Packages catalog.
+                    </p>
+                  ) : null}
+                  {!destinationPackages.hasDestination ? (
+                    <p className="crm-lead-drawer__hint">
+                      Set Destination in Details above — this list shows all CMS packages for that place.
+                    </p>
+                  ) : null}
+                  <label className="crm-lead-drawer__field-label mt-3" htmlFor={`lead-itin-${selectedLead.id}`}>
+                    Trip planner itinerary ({bookableItineraries.length})
                   </label>
                   <select
                     id={`lead-itin-${selectedLead.id}`}
@@ -2093,7 +2187,7 @@ export default function CRMPage() {
                     ))}
                   </select>
                   {bookableItineraries.length === 0 && (
-                    <p className="crm-lead-drawer__hint">Add days to a trip on the Trip planner page.</p>
+                    <p className="crm-lead-drawer__hint">Add days to a trip on the Trip planner page to convert to a booking.</p>
                   )}
                   <button
                     type="button"
@@ -2259,7 +2353,7 @@ export default function CRMPage() {
                     void runLeadAction('Delete lead', async () => {
                       await deleteLead(selectedLead.id);
                       setSelectedLeadId(null);
-                    });
+                    }, 'Lead deleted');
                   }
                 }}
                 className="crm-lead-drawer__btn-danger"

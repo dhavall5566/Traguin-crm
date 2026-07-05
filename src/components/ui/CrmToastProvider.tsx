@@ -1,14 +1,25 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { BellRing, CheckCircle2, AlertCircle, Info, UserPlus } from 'lucide-react';
+import { registerCrmToastBus, type CrmToastBusPayload } from '@/lib/crm-toast-bus';
 
-export type CrmToastVariant = 'success' | 'error' | 'info';
+export type CrmToastVariant = 'success' | 'error' | 'info' | 'lead';
 
 type CrmToastItem = {
   id: string;
   message: string;
   variant: CrmToastVariant;
+  leadKind?: 'new' | 'returning';
+  exiting?: boolean;
+  onAction?: () => void;
 };
 
 type ShowToastOptions = {
@@ -17,16 +28,38 @@ type ShowToastOptions = {
   durationMs?: number;
 };
 
+type ShowLeadToastOptions = {
+  message: string;
+  kind: 'new' | 'returning';
+  durationMs?: number;
+  onAction?: () => void;
+};
+
 type CrmToastContextValue = {
   showToast: (options: ShowToastOptions) => void;
+  showLeadToast: (options: ShowLeadToastOptions) => void;
 };
 
 const CrmToastContext = createContext<CrmToastContextValue | null>(null);
 
-const DEFAULT_DURATION_MS = 2800;
+const DEFAULT_DURATION_MS = 2600;
+const EXIT_MS = 360;
 
-function ToastIcon({ variant }: { variant: CrmToastVariant }) {
+function ToastIcon({
+  variant,
+  leadKind,
+}: {
+  variant: CrmToastVariant;
+  leadKind?: 'new' | 'returning';
+}) {
   const className = 'crm-toast__icon';
+  if (variant === 'lead') {
+    return leadKind === 'returning' ? (
+      <BellRing className={className} aria-hidden />
+    ) : (
+      <UserPlus className={className} aria-hidden />
+    );
+  }
   if (variant === 'error') return <AlertCircle className={className} aria-hidden />;
   if (variant === 'info') return <Info className={className} aria-hidden />;
   return <CheckCircle2 className={className} aria-hidden />;
@@ -45,15 +78,69 @@ export function CrmToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback(
-    ({ message, variant = 'success', durationMs = DEFAULT_DURATION_MS }: ShowToastOptions) => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setToasts((prev) => [...prev.slice(-2), { id, message, variant }]);
-      const timer = setTimeout(() => dismiss(id), durationMs);
-      timersRef.current.set(id, timer);
+  const beginDismiss = useCallback(
+    (id: string) => {
+      setToasts((prev) =>
+        prev.map((toast) => (toast.id === id ? { ...toast, exiting: true } : toast)),
+      );
+      setTimeout(() => dismiss(id), EXIT_MS);
     },
     [dismiss],
   );
+
+  const pushToast = useCallback(
+    (item: Omit<CrmToastItem, 'id' | 'exiting'>, durationMs: number) => {
+      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setToasts((prev) => [...prev.slice(-2), { ...item, id, exiting: false }]);
+      const timer = setTimeout(() => beginDismiss(id), durationMs);
+      timersRef.current.set(id, timer);
+    },
+    [beginDismiss],
+  );
+
+  const showToast = useCallback(
+    ({ message, variant = 'success', durationMs = DEFAULT_DURATION_MS }: ShowToastOptions) => {
+      pushToast({ message, variant }, durationMs);
+    },
+    [pushToast],
+  );
+
+  const showLeadToast = useCallback(
+    ({
+      message,
+      kind,
+      durationMs = kind === 'new' ? 5200 : 4600,
+      onAction,
+    }: ShowLeadToastOptions) => {
+      pushToast({ message, variant: 'lead', leadKind: kind, onAction }, durationMs);
+    },
+    [pushToast],
+  );
+
+  useEffect(() => {
+    const handleBus = (payload: CrmToastBusPayload) => {
+      const variant = payload.variant ?? 'success';
+      if (variant === 'lead' && payload.leadKind) {
+        pushToast(
+          {
+            message: payload.message,
+            variant: 'lead',
+            leadKind: payload.leadKind,
+            onAction: payload.onAction,
+          },
+          payload.durationMs ?? (payload.leadKind === 'new' ? 5200 : 4600),
+        );
+        return;
+      }
+      pushToast(
+        { message: payload.message, variant, onAction: payload.onAction },
+        payload.durationMs ?? DEFAULT_DURATION_MS,
+      );
+    };
+
+    registerCrmToastBus(handleBus);
+    return () => registerCrmToastBus(null);
+  }, [pushToast]);
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -64,19 +151,55 @@ export function CrmToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <CrmToastContext.Provider value={{ showToast }}>
+    <CrmToastContext.Provider value={{ showToast, showLeadToast }}>
       {children}
       <div className="crm-toast-stack" aria-live="polite" aria-relevant="additions">
-        {toasts.map((toast) => (
+        {toasts.map((toast, index) => (
           <div
             key={toast.id}
             role="status"
-            className={`crm-toast crm-toast--${toast.variant}`}
+            className={[
+              'crm-toast',
+              `crm-toast--${toast.variant}`,
+              toast.leadKind ? `crm-toast--${toast.leadKind}` : '',
+              toast.exiting ? 'crm-toast--exit' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ ['--toast-stack-index' as string]: index }}
           >
-            <div className="crm-toast__inner">
-              <ToastIcon variant={toast.variant} />
-              <span className="crm-toast__message">{toast.message}</span>
-            </div>
+            <div className="crm-toast__glow" aria-hidden />
+            {toast.onAction ? (
+              <button
+                type="button"
+                className="crm-toast__inner crm-toast__inner--action"
+                onClick={() => {
+                  toast.onAction?.();
+                  beginDismiss(toast.id);
+                }}
+              >
+                <div className="crm-toast__icon-wrap" aria-hidden>
+                  <ToastIcon variant={toast.variant} leadKind={toast.leadKind} />
+                </div>
+                <span className="crm-toast__message">{toast.message}</span>
+                <span className="crm-toast__action">View</span>
+              </button>
+            ) : (
+              <div className="crm-toast__inner">
+                <div className="crm-toast__icon-wrap" aria-hidden>
+                  <ToastIcon variant={toast.variant} leadKind={toast.leadKind} />
+                </div>
+                <span className="crm-toast__message">{toast.message}</span>
+              </div>
+            )}
+            <button
+              type="button"
+              className="crm-toast__close"
+              aria-label="Dismiss notification"
+              onClick={() => beginDismiss(toast.id)}
+            >
+              ×
+            </button>
           </div>
         ))}
       </div>

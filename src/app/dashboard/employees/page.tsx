@@ -11,6 +11,7 @@ import { Search, Plus, X } from 'lucide-react';
 import { StaffUsersTablePanel } from '@/components/staff/StaffUsersTablePanel';
 import { useCrmToast } from '@/components/ui/CrmToastProvider';
 import { PhoneInput } from '@/components/ui/PhoneInput';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { defaultCountryCode } from '@/data/country-codes';
 import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import { apiRoleIdFromDefinition } from '@/lib/api/role-catalog';
@@ -627,8 +628,7 @@ export default function EmployeesPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   Temporary password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -765,8 +765,7 @@ export default function EmployeesPage() {
                 <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                   New password <span className="font-normal normal-case">(optional)</span>
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   value={editPassword}
                   onChange={(e) => setEditPassword(e.target.value)}
                   minLength={8}

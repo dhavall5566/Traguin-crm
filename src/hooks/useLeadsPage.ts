@@ -20,6 +20,10 @@ import {
 } from "@/lib/api/leads";
 import { bindCrmListFetch } from "@/lib/api/pagination";
 import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
+import { markLeadLocallyMutated } from "@/lib/api/lead-local-mutations";
+import { upsertCustomerInWorkspace } from "@/lib/api/customer-workspace-sync";
+import type { Customer } from "@/lib/store";
+import { CRM_LEAD_INBOUND_EVENT } from "@/hooks/useLeadRealtimeNotifications";
 import { loadProgressiveCrmList } from "@/lib/api/progressive-list";
 import {
   CRM_CACHE,
@@ -83,6 +87,21 @@ export type OptimisticTimelineMutation<T = string | undefined> = {
   promise: Promise<T>;
 };
 
+function syncCustomersLinkedToLeads(leads: LeadRecord[]): void {
+  const cached = getCrmWorkspaceList<Customer>(CRM_CACHE.customers);
+  const cachedIds = new Set((cached?.items ?? []).map((row) => row.id));
+  const missingCustomerIds = [
+    ...new Set(
+      leads
+        .map((lead) => lead.customerId)
+        .filter((id): id is string => Boolean(id) && !cachedIds.has(id)),
+    ),
+  ];
+  for (const customerId of missingCustomerIds.slice(0, 25)) {
+    void upsertCustomerInWorkspace(customerId).catch(() => undefined);
+  }
+}
+
 export function useLeadsPage() {
   const warmLeads = getCrmWorkspaceList<LeadRecord>(CRM_CACHE.leads);
   const [leads, setLeads] = useState<LeadRecord[]>(() => warmLeads?.items ?? []);
@@ -125,6 +144,7 @@ export function useLeadsPage() {
         onComplete: (allItems) => {
           setLeads(allItems);
           setBackgroundLoading(false);
+          syncCustomersLinkedToLeads(allItems);
         },
       });
     } catch (e) {
@@ -173,6 +193,7 @@ export function useLeadsPage() {
             if (cancelled) return;
             setLeads(allItems);
             setBackgroundLoading(false);
+            syncCustomersLinkedToLeads(allItems);
           },
         });
       } catch (e) {
@@ -189,6 +210,14 @@ export function useLeadsPage() {
       controller.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const onInbound = () => {
+      void refreshLeads();
+    };
+    window.addEventListener(CRM_LEAD_INBOUND_EVENT, onInbound);
+    return () => window.removeEventListener(CRM_LEAD_INBOUND_EVENT, onInbound);
+  }, [refreshLeads]);
 
   const replaceLeadInState = useCallback(
     (apiLead: Parameters<typeof applyLeadRecord>[0]) => {
@@ -250,15 +279,21 @@ export function useLeadsPage() {
       leadMutationLockRef.current.add(lockKey);
       try {
         const { customerId, ...createInput } = input;
-        void customerId;
-        const apiLead = await createLead(createInput, {
-          initialActivity: {
-            type: "NOTE",
-            description: `Lead created from source: ${createInput.source || "Manual Input"}`,
+        const apiLead = await createLead(
+          { ...createInput, customerId: customerId || undefined },
+          {
+            initialActivity: {
+              type: "NOTE",
+              description: `Lead created from source: ${createInput.source || "Manual Input"}`,
+            },
           },
-        });
+        );
         invalidateCrmListCache(CRM_CACHE.leads);
         replaceLeadInState(apiLead);
+        markLeadLocallyMutated(apiLead.id);
+        if (apiLead.customer_id) {
+          await upsertCustomerInWorkspace(apiLead.customer_id);
+        }
         return apiLead;
       } finally {
         leadMutationLockRef.current.delete(lockKey);

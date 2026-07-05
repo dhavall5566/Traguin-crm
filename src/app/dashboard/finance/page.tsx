@@ -16,6 +16,7 @@ import {
   Trash2,
   Pencil,
 } from 'lucide-react';
+import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 
 function generatePaymentTxnReference(): string {
   try {
@@ -116,9 +117,11 @@ export default function FinancePage() {
       await recordPayment(invoiceDetailId, Number(payAmount), payMethod, ref);
       setPayAmount('');
       setPayRef(generatePaymentTxnReference());
-      alert('Payment transaction recorded successfully.');
+      crmToastSuccess('Payment recorded');
     } catch (err) {
-      setPaymentError(err instanceof Error ? err.message : 'Failed to record payment');
+      const message = err instanceof Error ? err.message : 'Failed to record payment';
+      setPaymentError(message);
+      crmToastError(message);
     }
   };
 
@@ -192,15 +195,17 @@ export default function FinancePage() {
       const payload = { amount: Number(expAmount), category: expCat, description: expDesc };
       if (editingExpenseId) {
         await updateExpense(editingExpenseId, payload);
-        alert('Expense updated successfully.');
+        crmToastSuccess('Expense updated');
       } else {
         await addExpense(payload);
-        alert('Expense logged successfully.');
+        crmToastSuccess('Expense logged');
       }
       resetExpenseForm();
       setShowExpenseModal(false);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to save expense');
+      const message = err instanceof Error ? err.message : 'Failed to save expense';
+      setActionError(message);
+      crmToastError(message);
     }
   };
 
@@ -209,8 +214,11 @@ export default function FinancePage() {
     setActionError(null);
     try {
       await deleteExpense(expenseId);
+      crmToastSuccess('Expense deleted');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to delete expense');
+      const message = err instanceof Error ? err.message : 'Failed to delete expense';
+      setActionError(message);
+      crmToastError(message);
     }
   };
 
@@ -232,9 +240,11 @@ export default function FinancePage() {
       setInvDueDate('');
       setInvoiceDetailId(created.id);
       setActiveTab('invoices');
-      alert('Invoice created successfully.');
+      crmToastSuccess('Invoice created');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to create invoice');
+      const message = err instanceof Error ? err.message : 'Failed to create invoice';
+      setActionError(message);
+      crmToastError(message);
     }
   };
 

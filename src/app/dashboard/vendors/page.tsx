@@ -22,6 +22,7 @@ import {
   Trash2,
   Save,
 } from 'lucide-react';
+import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 
 export default function VendorsPage() {
   const currentAgency = useStore((state) => state.currentAgency);
@@ -109,8 +110,11 @@ export default function VendorsPage() {
       setVAddress('');
       setShowAddModal(false);
       setSelectedVendorId(created.id);
+      crmToastSuccess('Vendor registered');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to register vendor');
+      const message = err instanceof Error ? err.message : 'Failed to register vendor';
+      setActionError(message);
+      crmToastError(message);
     }
   };
 
@@ -119,11 +123,14 @@ export default function VendorsPage() {
     if (!activeVendor || !payoutAmount) return;
     setPayoutError(null);
     try {
-      await recordVendorPayout(activeVendor.id, Number(payoutAmount));
+      const amount = Number(payoutAmount);
+      await recordVendorPayout(activeVendor.id, amount);
       setPayoutAmount('');
-      alert(`Payout of ₹${payoutAmount} registered. Vendor balance updated.`);
+      crmToastSuccess(`Payout of ₹${amount.toLocaleString('en-IN')} registered`);
     } catch (err) {
-      setPayoutError(err instanceof Error ? err.message : 'Failed to record payout');
+      const message = err instanceof Error ? err.message : 'Failed to record payout';
+      setPayoutError(message);
+      crmToastError(message);
     }
   };
 
@@ -151,8 +158,11 @@ export default function VendorsPage() {
     setActionError(null);
     try {
       await saveVendor(activeVendor.id);
+      crmToastSuccess('Vendor saved');
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to save rate schedules');
+      const message = err instanceof Error ? err.message : 'Failed to save rate schedules';
+      setActionError(message);
+      crmToastError(message);
     }
   };
 
@@ -163,8 +173,11 @@ export default function VendorsPage() {
     try {
       await deleteVendor(activeVendor.id);
       setSelectedVendorId('');
+      crmToastSuccess('Vendor deleted');
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete vendor');
+      const message = err instanceof Error ? err.message : 'Failed to delete vendor';
+      setDeleteError(message);
+      crmToastError(message);
     }
   };
 

@@ -15,6 +15,7 @@ import {
   type RbacModuleKey,
   type RbacCrudSet,
 } from '@/lib/rbac';
+import type { LeadDetailsFields } from '@/lib/lead-details';
 
 export type { RoleDefinition, RbacModuleKey, RbacCrudSet } from '@/lib/rbac';
 
@@ -47,8 +48,10 @@ export interface User {
   role: string; // Admin, Sales, Operations, Finance, Vendor, Customer
 }
 
-export interface Lead {
+export interface Lead extends LeadDetailsFields {
   id: string;
+  /** Human-readable reference, e.g. TRG001-ITN */
+  leadCode?: string;
   agencyId: string;
   title: string;
   firstName: string;
@@ -68,6 +71,10 @@ export interface Lead {
   proposalSentAt?: string;
   /** Customer inquiry / request text (website forms, manual entry). */
   message?: string;
+  /** CMS form submission that created this lead (website intake). */
+  cmsFormSubmissionId?: string;
+  /** CMS marketing package linked to this lead. */
+  cmsPackageId?: string;
 }
 
 export interface LeadNote {

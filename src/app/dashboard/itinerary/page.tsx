@@ -36,6 +36,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { DatePickerInput } from '@/components/ui/DatePickerInput';
+import { crmToastError, crmToastInfo, crmToastSuccess } from '@/lib/crm-toast-bus';
 
 const statusLabels: Record<Itinerary['status'], string> = {
   DRAFT: 'Draft',
@@ -90,7 +91,6 @@ export default function ItineraryPage() {
   } = useItineraryPage();
 
   const [savingItinerary, setSavingItinerary] = useState(false);
-  const [saveToast, setSaveToast] = useState(false);
 
   const agencyItineraries = useMemo(
     () => itineraries.filter((i) => i.agencyId === currentAgency.id),
@@ -138,12 +138,6 @@ export default function ItineraryPage() {
   const [itemDetails, setItemDetails] = useState('');
   const [itemCost, setItemCost] = useState('');
   const [itemSelling, setItemSelling] = useState('');
-
-  useEffect(() => {
-    if (!saveToast) return undefined;
-    const t = window.setTimeout(() => setSaveToast(false), 2800);
-    return () => window.clearTimeout(t);
-  }, [saveToast]);
 
   const resolveCrmCustomerId = useCallback(
     async (intent: CrmItineraryCreationIntent | null | undefined) => {
@@ -255,8 +249,9 @@ export default function ItineraryPage() {
       try {
         await deleteItinerary(itin.id);
         if (selectedItinId === itin.id) setSelectedItinId('');
+        crmToastSuccess('Itinerary deleted');
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to delete itinerary');
+        crmToastError(err instanceof Error ? err.message : 'Failed to delete itinerary');
       }
     },
     [bookings, deleteItinerary, selectedItinId],
@@ -374,8 +369,9 @@ export default function ItineraryPage() {
       persistCrmProposalToLead(newItinId);
 
       setSelectedItinId(newItinId);
+      crmToastSuccess('Itinerary created');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create itinerary');
+      crmToastError(err instanceof Error ? err.message : 'Failed to create itinerary');
     }
   };
 
@@ -505,7 +501,7 @@ export default function ItineraryPage() {
 
     const dest = aiDestination.trim();
     if (!dest) {
-      alert('Please enter a title.');
+      crmToastInfo('Please enter a destination.');
       return;
     }
 
@@ -661,9 +657,10 @@ export default function ItineraryPage() {
       setAiDestination('');
       setAiNumDays(5);
       setAiTravelStyle('Balanced');
+      crmToastSuccess('Itinerary generated');
     } catch (err) {
       console.error(err);
-      alert('Something went wrong while generating. Check the browser console.');
+      crmToastError('Something went wrong while generating. Check the browser console.');
     } finally {
       setAiGenerating(false);
     }
@@ -678,9 +675,9 @@ export default function ItineraryPage() {
     setSavingItinerary(true);
     try {
       await saveItinerary(activeItinerary.id);
-      setSaveToast(true);
+      crmToastSuccess('Itinerary saved');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save itinerary');
+      crmToastError(err instanceof Error ? err.message : 'Failed to save itinerary');
     } finally {
       setSavingItinerary(false);
     }
@@ -718,11 +715,6 @@ export default function ItineraryPage() {
 
   return (
     <>
-      {saveToast ? (
-        <div className="no-print fixed bottom-4 right-4 z-50 rounded-lg border border-emerald-500/30 bg-emerald-950/90 px-4 py-2 text-xs font-semibold text-emerald-100 shadow-lg">
-          Itinerary saved
-        </div>
-      ) : null}
       {itinerariesError ? (
         <div className="no-print mx-auto mb-3 w-full max-w-[calc(100vw-2rem)] rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-xs text-destructive">
           {itinerariesError}
@@ -1606,7 +1598,7 @@ export default function ItineraryPage() {
                     proposalTheme
                   );
                   navigator.clipboard.writeText(url);
-                  alert('Share link copied to clipboard!');
+                  crmToastSuccess('Share link copied');
                 }}
                 className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[10px] shrink-0"
               >

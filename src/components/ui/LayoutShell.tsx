@@ -18,6 +18,8 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { prefetchCrmNavRoute } from '@/lib/api/crm-prefetch';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
+import { useLeadRealtimeNotifications } from '@/hooks/useLeadRealtimeNotifications';
+import { useLeadNotifications, type LeadNotificationItem } from '@/lib/lead-notifications';
 import { CRM_NAV_GROUPS, type CrmNavGroup } from '@/lib/crm-nav-config';
 import { getCrmBreadcrumbLabel } from '@/lib/crm-breadcrumbs';
 import { traguinLogo, TRAGUIN_LOGO_SRC } from '@/lib/brand/traguin-logo';
@@ -118,6 +120,43 @@ function formatLogTime(iso: string) {
   });
 }
 
+function LeadNotificationEntry({
+  item,
+  onOpen,
+}: {
+  item: LeadNotificationItem;
+  onOpen: () => void;
+}) {
+  const kindClass =
+    item.kind === 'new' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-600';
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full p-2 rounded-lg bg-primary/5 border border-primary/15 text-left transition-colors hover:bg-primary/10"
+    >
+      <div className="flex justify-between items-start gap-2">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center flex-wrap gap-1.5">
+            <span className="font-semibold text-[10px] text-foreground">Live alert</span>
+            <span className={`text-[8px] px-1 py-0.5 rounded font-bold ${kindClass}`}>
+              {item.kind === 'new' ? 'NEW LEAD' : 'RETURNING'}
+            </span>
+            <span className="text-[8px] px-1 py-0.5 rounded bg-secondary text-muted-foreground font-medium">
+              Lead
+            </span>
+          </div>
+          <p className="text-[11px] text-foreground leading-snug">{item.message}</p>
+        </div>
+        <span className="text-[9px] text-muted-foreground shrink-0" title={new Date(item.createdAt).toLocaleString()}>
+          {formatLogTime(item.createdAt)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 function AuditLogEntry({ log }: { log: AuditLog }) {
   return (
     <div className="p-2 rounded-lg bg-secondary/50 border border-border/30">
@@ -156,9 +195,14 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const workspacePreferences = useStore((state) => state.workspacePreferences);
   const currentAgency = useStore((state) => state.currentAgency);
   const currentUser = useStore((state) => state.currentUser);
+  const authStatus = useStore((state) => state.authStatus);
   const clearAuthSession = useStore((state) => state.clearAuthSession);
   const roleDefinitions = useStore((state) => state.roleDefinitions);
   const { auditLogs } = useAuditLogFeed(Boolean(currentUser));
+  const leadNotifications = useLeadNotifications();
+
+  const isDashboardRoute = pathname.startsWith('/dashboard');
+  useLeadRealtimeNotifications(authStatus === 'authenticated' && isDashboardRoute);
 
   const agencyAuditLogs = useMemo(
     () =>
@@ -168,10 +212,35 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     [auditLogs, currentAgency.id]
   );
 
+  const notificationFeed = useMemo(() => {
+    type FeedItem =
+      | { kind: 'lead'; sortAt: string; lead: LeadNotificationItem }
+      | { kind: 'audit'; sortAt: string; log: AuditLog };
+
+    const items: FeedItem[] = [
+      ...leadNotifications.map((lead) => ({
+        kind: 'lead' as const,
+        sortAt: lead.createdAt,
+        lead,
+      })),
+      ...agencyAuditLogs.map((log) => ({
+        kind: 'audit' as const,
+        sortAt: log.createdAt,
+        log,
+      })),
+    ];
+
+    return items
+      .sort((a, b) => new Date(b.sortAt).getTime() - new Date(a.sortAt).getTime())
+      .slice(0, 10);
+  }, [agencyAuditLogs, leadNotifications]);
+
   const unreadCount = useMemo(() => {
     if (!lastSeenAt) return 0;
-    return agencyAuditLogs.filter((log) => log.createdAt > lastSeenAt).length;
-  }, [agencyAuditLogs, lastSeenAt]);
+    const unreadAudits = agencyAuditLogs.filter((log) => log.createdAt > lastSeenAt).length;
+    const unreadLeads = leadNotifications.filter((item) => item.createdAt > lastSeenAt).length;
+    return unreadAudits + unreadLeads;
+  }, [agencyAuditLogs, lastSeenAt, leadNotifications]);
 
   const filteredNavGroups = useMemo((): CrmNavGroup[] => {
     if (!currentUser) return [];
@@ -271,6 +340,11 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
     currentUser &&
     canAccessModuleView(currentUser.role, currentAgency.id, 'staff_control', roleDefinitions)
   );
+
+  const handleOpenLeadNotification = (leadId: string) => {
+    handleDismissNotifications();
+    router.push(`/dashboard/crm?openLead=${leadId}`);
+  };
 
   const handleLogout = async () => {
     await fetch('/api/crm/auth/logout', { method: 'POST', credentials: 'include' });
@@ -376,7 +450,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                 type="button"
                 onClick={handleToggleNotifications}
                 className="crm-icon-btn relative"
-                title="Security audit logs"
+                title="Notifications"
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
@@ -390,9 +464,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                 <div className="crm-dropdown w-80 p-2 text-xs">
                   <div className="flex justify-between items-center border-b border-border pb-2 mb-2 px-1">
                     <div>
-                      <span className="font-semibold block">Recent Security Audit Logs</span>
+                      <span className="font-semibold block">Recent Activity</span>
                       <span className="text-[9px] text-muted-foreground">
-                        {agencyAuditLogs.length} event{agencyAuditLogs.length === 1 ? '' : 's'} for {currentAgency.name}
+                        {notificationFeed.length} update{notificationFeed.length === 1 ? '' : 's'} · {currentAgency.name}
                       </span>
                     </div>
                     <button
@@ -404,13 +478,21 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
                     </button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {agencyAuditLogs.length > 0 ? (
-                      agencyAuditLogs.slice(0, 8).map((log, i) => (
-                        <AuditLogEntry key={`${log.id}-${i}`} log={log} />
-                      ))
+                    {notificationFeed.length > 0 ? (
+                      notificationFeed.map((entry, i) =>
+                        entry.kind === 'lead' ? (
+                          <LeadNotificationEntry
+                            key={`lead-${entry.lead.id}-${i}`}
+                            item={entry.lead}
+                            onOpen={() => handleOpenLeadNotification(entry.lead.leadId)}
+                          />
+                        ) : (
+                          <AuditLogEntry key={`audit-${entry.log.id}-${i}`} log={entry.log} />
+                        ),
+                      )
                     ) : (
                       <div className="py-6 text-center text-muted-foreground text-[11px]">
-                        No audit activity yet. Actions across the CRM will appear here.
+                        No activity yet. New leads and CRM actions will appear here.
                       </div>
                     )}
                   </div>

@@ -1,5 +1,20 @@
 import { countryDialCodes, defaultCountryCode, getCountryByCode } from "@/data/country-codes";
 
+export const LOCAL_PHONE_LENGTH = 10;
+
+export function sanitizeLocalPhoneInput(value: string): string {
+  return value.replace(/\D/g, "").slice(0, LOCAL_PHONE_LENGTH);
+}
+
+export function validateLocalPhone(value: string, required = false): string | undefined {
+  const digits = sanitizeLocalPhoneInput(value);
+  if (!digits) return required ? "Please enter your phone number" : undefined;
+  if (digits.length !== LOCAL_PHONE_LENGTH) {
+    return `Phone number must be exactly ${LOCAL_PHONE_LENGTH} digits`;
+  }
+  return undefined;
+}
+
 export function formatFullPhone(countryCode: string, localNumber: string): string {
   const dial = getCountryByCode(countryCode).dial;
   const digits = localNumber.replace(/\D/g, "");
