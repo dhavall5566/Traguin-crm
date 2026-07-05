@@ -94,7 +94,10 @@ function syncCustomersLinkedToLeads(leads: LeadRecord[]): void {
     ...new Set(
       leads
         .map((lead) => lead.customerId)
-        .filter((id): id is string => Boolean(id) && !cachedIds.has(id)),
+        .filter((id): id is string => {
+          if (!id) return false;
+          return !cachedIds.has(id);
+        }),
     ),
   ];
   for (const customerId of missingCustomerIds.slice(0, 25)) {
