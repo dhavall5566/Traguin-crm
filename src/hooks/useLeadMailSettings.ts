@@ -8,7 +8,6 @@ import {
   type AgencyLeadMailSettings,
   type AgencyLeadMailSettingsInput,
   type LeadMailEventInput,
-  type LeadMailEventType,
 } from '@/lib/api/lead-mail-settings';
 
 export function useLeadMailSettings() {
