@@ -33,11 +33,19 @@ export type CmsPackage = CmsPackageListItem & {
   moods: string[];
 };
 
+const SLUG_SERIAL_RE = /^([a-z]{2,3})-(\d{3})-/;
+
+function serialCodeFromSlug(slug: string): string | undefined {
+  const match = SLUG_SERIAL_RE.exec(slug);
+  if (!match) return undefined;
+  return `${match[1].toUpperCase()}-${match[2]}`;
+}
+
 export function mapPackageListFromApi(item: CmsPackageListItem) {
   return {
     id: item.id,
     slug: item.slug,
-    serialCode: item.serial_code ?? undefined,
+    serialCode: item.serial_code ?? serialCodeFromSlug(item.slug) ?? undefined,
     traguinTourCode: item.traguin_tour_code ?? undefined,
     destinationId: item.destination_id,
     destinationName: item.destination_name,
