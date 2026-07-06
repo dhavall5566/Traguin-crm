@@ -62,7 +62,7 @@ export function PhoneInput({
       className={cn(
         "w-full items-center",
         isCompact
-          ? cn("flex gap-1", trailing && "pr-1")
+          ? cn("flex gap-1", trailing ? "pr-1" : undefined)
           : cn(
               "grid gap-x-2 sm:gap-x-3",
               trailing

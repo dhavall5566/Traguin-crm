@@ -445,7 +445,7 @@ export function SettingsEmailPanel() {
               <CrmTablePagination
                 label="Recipients"
                 page={pagination.page}
-                pageSize={pagination.pageSize}
+                totalPages={pagination.totalPages}
                 total={pagination.total}
                 rangeStart={pagination.rangeStart}
                 rangeEnd={pagination.rangeEnd}
