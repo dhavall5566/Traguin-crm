@@ -45,6 +45,10 @@ export const RBAC_NAV_MODULE: Record<string, RbacModuleKey> = {
   '/dashboard/finance': 'finance',
   '/dashboard/employees': 'staff_control',
   '/dashboard/settings': 'workspace_settings',
+  '/dashboard/settings/general': 'workspace_settings',
+  '/dashboard/settings/email-setup': 'workspace_settings',
+  '/dashboard/settings/smtp': 'workspace_settings',
+  '/dashboard/settings/email': 'workspace_settings',
 };
 
 /** Sidebar label → module key used for MENU visibility only (inherits from CRM matrix row). */

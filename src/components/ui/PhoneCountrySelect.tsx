@@ -22,7 +22,7 @@ type PhoneCountrySelectProps = {
 const triggerClass: Record<NonNullable<PhoneCountrySelectProps["variant"]>, string> = {
   dark: "border border-white/15 bg-white/10 text-white hover:bg-white/18",
   form: "border border-glass-border bg-surface text-foreground hover:border-gold/35 hover:bg-surface-elevated",
-  crm: "border border-border bg-secondary/80 text-foreground hover:bg-secondary",
+  crm: "bg-transparent text-foreground hover:bg-secondary/70",
 };
 
 const dialTextClass: Record<NonNullable<PhoneCountrySelectProps["variant"]>, string> = {
@@ -167,33 +167,42 @@ export function PhoneCountrySelect({
         type="button"
         disabled={disabled}
         className={cn(
-          "flex h-9 min-w-[4.75rem] items-center gap-1 rounded-full px-2 transition-colors sm:min-w-[5.5rem] sm:gap-1.5 sm:px-2.5",
+          "flex items-center transition-colors",
+          variant === "crm"
+            ? "h-8 shrink-0 gap-0.5 rounded-md px-0.5"
+            : "h-9 min-w-[4.75rem] gap-1 rounded-full px-2 sm:min-w-[5.5rem] sm:gap-1.5 sm:px-2.5",
           triggerClass[variant],
           disabled && "cursor-not-allowed opacity-60"
         )}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
+        aria-label={`Country code ${selected.dial}`}
         onClick={() => {
           if (disabled) return;
           setOpen((o) => !o);
         }}
       >
-        <span className="text-base leading-none sm:text-lg" aria-hidden>
+        <span
+          className={cn("leading-none", variant === "crm" ? "text-sm" : "text-base sm:text-lg")}
+          aria-hidden
+        >
           {selected.flag}
         </span>
         <span
           className={cn(
-            "text-xs font-semibold whitespace-nowrap tabular-nums sm:text-sm",
+            "font-medium whitespace-nowrap tabular-nums",
+            variant === "crm" ? "text-xs" : "text-xs font-semibold sm:text-sm",
             dialTextClass[variant]
           )}
         >
           {selected.dial}
         </span>
         <ChevronDown
-          size={14}
+          size={variant === "crm" ? 12 : 14}
           className={cn(
             "shrink-0 transition-transform",
+            variant === "crm" ? "opacity-60" : "",
             chevronClass[variant],
             open && "rotate-180"
           )}

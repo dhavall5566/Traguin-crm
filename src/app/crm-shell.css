@@ -267,8 +267,112 @@
 
 .crm-sidebar-footer {
   flex-shrink: 0;
-  padding: 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+  padding: 0.65rem 0.75rem 0.85rem;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, var(--background));
+}
+
+.crm-account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.45rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+  background: color-mix(in srgb, var(--background) 88%, var(--surface));
+}
+
+.crm-account-bar__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.crm-account-bar__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--primary-foreground);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--gold) 94%, white),
+    color-mix(in srgb, var(--gold) 72%, #1a1612)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 5px rgba(26, 22, 18, 0.1);
+}
+
+.crm-account-bar__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.crm-account-bar__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crm-account-bar__role {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted-foreground) 92%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crm-account-bar__logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  border: 1px solid transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.crm-account-bar__logout:hover {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 9%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 18%, transparent);
+}
+
+.crm-account-bar__logout:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.crm-account-bar--topbar {
+  flex-shrink: 0;
+  max-width: 14rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.35rem;
 }
 
 .crm-switch-cms {
@@ -468,6 +572,146 @@
 
 .crm-nav-link--compact {
   padding: 0.4rem 0.65rem;
+}
+
+.crm-nav-item-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+/* Expandable parent tab — closed: normal row; open: bordered section card */
+.crm-nav-section {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.crm-nav-section__header {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.crm-nav-section__link {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.crm-nav-section__link--branch {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.crm-nav-section__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.85rem;
+  height: 1.85rem;
+  margin: 0.15rem 0.35rem 0.15rem 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 50%, var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.crm-nav-section__toggle:hover {
+  background: color-mix(in srgb, var(--gold) 12%, var(--background));
+  color: var(--foreground);
+}
+
+.crm-nav-section--open {
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--background) 80%, var(--foreground)),
+    0 4px 14px color-mix(in srgb, var(--foreground) 6%, transparent);
+  overflow: hidden;
+}
+
+.crm-nav-section--open .crm-nav-section__header {
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  background: color-mix(in srgb, var(--foreground) 3%, var(--background));
+}
+
+.crm-nav-section--open .crm-nav-section__link {
+  border-radius: 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+.crm-nav-section--open .crm-nav-section__link:hover,
+.crm-nav-section--open .crm-nav-section__link.crm-nav-link--active {
+  background: transparent;
+}
+
+.crm-nav-section--open .crm-nav-section__toggle {
+  margin-right: 0.5rem;
+}
+
+.crm-nav-section--open-branch .crm-nav-section__header {
+  background: color-mix(in srgb, var(--gold) 8%, var(--background));
+}
+
+.crm-nav-section__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem 0.55rem;
+}
+
+.crm-nav-section__panel::before {
+  content: "Subpages";
+  display: block;
+  padding: 0.15rem 0.55rem 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 45%, var(--muted-foreground));
+}
+
+.crm-nav-subtab {
+  display: block;
+  margin: 0;
+  padding: 0.55rem 0.7rem 0.55rem 0.85rem;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--foreground) 62%, var(--muted-foreground));
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.crm-nav-subtab:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  color: var(--foreground);
+}
+
+.crm-nav-subtab--active {
+  border-left-color: color-mix(in srgb, var(--gold) 82%, var(--foreground));
+  background: color-mix(in srgb, var(--gold) 14%, var(--background));
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.crm-nav-subtab--active:hover {
+  background: color-mix(in srgb, var(--gold) 18%, var(--background));
+  color: var(--foreground);
 }
 
 .crm-product-switcher {
@@ -748,13 +992,6 @@
   background: var(--gold);
   color: var(--primary-foreground);
   font-weight: 700;
-}
-
-.crm-sidebar-footer {
-  flex-shrink: 0;
-  border-top: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
-  padding: 0.75rem 0.875rem;
-  background: color-mix(in srgb, var(--surface) 96%, var(--background));
 }
 
 .crm-sidebar-nav {
@@ -3307,6 +3544,201 @@
   background: var(--surface);
   color: var(--foreground);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.crm-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.crm-settings-sections {
+  padding-left: 0.15rem;
+}
+
+.crm-settings-subtabs {
+  padding-left: 0.3rem;
+}
+
+.crm-staff-tabs--section {
+  border-style: solid;
+  background: color-mix(in srgb, var(--surface-elevated) 80%, var(--background));
+}
+
+.crm-staff-tabs--section .crm-staff-tabs__btn {
+  font-size: 0.71875rem;
+  padding: 0.42rem 0.9rem;
+}
+
+.crm-staff-tabs--sub {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--surface-elevated) 72%, var(--background));
+}
+
+.crm-staff-tabs--sub .crm-staff-tabs__btn {
+  font-size: 0.6875rem;
+  padding: 0.4rem 0.85rem;
+}
+
+.crm-email-config {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.crm-email-config__events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 88%, var(--background));
+}
+
+.crm-email-config__event {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: 100%;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.crm-email-config__event:hover {
+  background: color-mix(in srgb, var(--gold) 7%, var(--background));
+}
+
+.crm-email-config__event--active {
+  background: var(--surface);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.crm-email-config__event-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+  color: var(--foreground);
+  shrink: 0;
+}
+
+.crm-email-config__event-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.crm-email-config__event-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.crm-email-config__event-meta {
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+}
+
+.crm-email-config__panel {
+  min-width: 0;
+  padding: 0.85rem;
+  border-radius: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+  background: var(--card);
+}
+
+.crm-email-config__panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.crm-email-config__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.crm-email-config__count {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  shrink: 0;
+}
+
+.crm-toggle--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.crm-toggle__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.crm-toggle__track {
+  position: relative;
+  width: 2.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  background: color-mix(in srgb, var(--secondary) 55%, var(--background));
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+  padding: 0;
+}
+
+.crm-toggle__track:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+
+.crm-toggle__track--on {
+  background: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 70%, #1a1612);
+}
+
+.crm-toggle__thumb {
+  position: absolute;
+  top: 50%;
+  left: 0.14rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 18%, transparent);
+  transform: translateY(-50%);
+  transition: transform 0.18s ease;
+}
+
+.crm-toggle__track--on .crm-toggle__thumb {
+  transform: translate(1rem, -50%);
+}
+
+@media (max-width: 900px) {
+  .crm-email-config {
+    grid-template-columns: 1fr;
+  }
 }
 
 .crm-staff-list {

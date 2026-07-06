@@ -4,6 +4,8 @@ import { clampListLimit } from "@/lib/api/pagination";
 export type CmsPackageListItem = {
   id: string;
   slug: string;
+  serial_code: string | null;
+  traguin_tour_code: string | null;
   destination_id: string;
   destination_name: string;
   title: string;
@@ -35,6 +37,8 @@ export function mapPackageListFromApi(item: CmsPackageListItem) {
   return {
     id: item.id,
     slug: item.slug,
+    serialCode: item.serial_code ?? undefined,
+    traguinTourCode: item.traguin_tour_code ?? undefined,
     destinationId: item.destination_id,
     destinationName: item.destination_name,
     title: item.title,

@@ -48,27 +48,52 @@ export function mapApiUser(user: ApiUser, role = "Agency Admin"): User {
   };
 }
 
-export async function crmFetch(
-  path: string,
-  init?: RequestInit & { redirectOn401?: boolean },
-): Promise<Response> {
-  const { redirectOn401 = true, ...requestInit } = init ?? {};
-  const response = await fetch(path, {
-    ...requestInit,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...requestInit.headers,
-    },
-  });
+export const CRM_FETCH_TIMEOUT_MS = 12_000;
 
-  if (redirectOn401 && response.status === 401 && typeof window !== "undefined") {
-    const loginUrl = new URL(CRM_LOGIN_PATH, window.location.origin);
-    loginUrl.searchParams.set("next", window.location.pathname);
-    window.location.href = loginUrl.toString();
+type CrmFetchInit = RequestInit & {
+  redirectOn401?: boolean;
+  timeoutMs?: number;
+};
+
+export async function crmFetch(path: string, init?: CrmFetchInit): Promise<Response> {
+  const { redirectOn401 = true, timeoutMs = CRM_FETCH_TIMEOUT_MS, ...requestInit } = init ?? {};
+  const controller = new AbortController();
+  const timer =
+    typeof window !== "undefined"
+      ? window.setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+  try {
+    const response = await fetch(path, {
+      ...requestInit,
+      signal: controller.signal,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...requestInit.headers,
+      },
+    });
+
+    if (redirectOn401 && response.status === 401 && typeof window !== "undefined") {
+      const loginUrl = new URL(CRM_LOGIN_PATH, window.location.origin);
+      loginUrl.searchParams.set("next", window.location.pathname);
+      window.location.href = loginUrl.toString();
+    }
+
+    return response;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Request timed out. Check that the CRM API is running.");
+    }
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Unable to reach the CRM API. Start the backend on port 8001 and refresh the page.",
+      );
+    }
+    throw error;
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
   }
-
-  return response;
 }
 
 export async function crmFetchJson<T>(
@@ -78,8 +103,25 @@ export async function crmFetchJson<T>(
   const response = await crmFetch(path, init);
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    const detail = typeof body?.detail === "string" ? body.detail : `Request failed (${response.status})`;
-    throw new Error(detail);
+    let detail: string | undefined;
+    if (typeof body?.detail === "string") {
+      detail = body.detail;
+    } else if (Array.isArray(body?.detail)) {
+      detail = body.detail
+        .map((item: { msg?: string; loc?: unknown[] }) => {
+          const field = Array.isArray(item.loc) ? item.loc.filter((p) => p !== "body").join(".") : "";
+          return field ? `${field}: ${item.msg ?? "Invalid value"}` : item.msg ?? "Invalid value";
+        })
+        .join("; ");
+    }
+    throw new Error(detail ?? `Request failed (${response.status})`);
   }
-  return (await response.json()) as T;
+  if (response.status === 204 || response.status === 205) {
+    return undefined as T;
+  }
+  const text = await response.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }

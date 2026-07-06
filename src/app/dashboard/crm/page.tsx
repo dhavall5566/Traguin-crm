@@ -231,6 +231,8 @@ export default function CRMPage() {
   /** Editable snapshot for drawer pipeline fields until user clicks Save */
   const [leadDetailDraft, setLeadDetailDraft] = useState<LeadDetailDraft | null>(null);
   const leadDetailHydratedForIdRef = useRef<string | null>(null);
+  /** Last server status for open drawer — used to sync draft after list/tile status changes */
+  const leadDetailServerStatusRef = useRef<string | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const [timelineEnterKeys, setTimelineEnterKeys] = useState<Set<string>>(() => new Set());
   const [timelineEnterTick, setTimelineEnterTick] = useState(0);
@@ -277,6 +279,7 @@ export default function CRMPage() {
     if (!snap) return;
     if (leadDetailHydratedForIdRef.current !== selectedLeadId) {
       leadDetailHydratedForIdRef.current = selectedLeadId;
+      leadDetailServerStatusRef.current = snap.status;
       setLeadDetailDraft({
         status: snap.status,
         value: snap.value,
@@ -286,7 +289,17 @@ export default function CRMPage() {
         message: snap.message ?? '',
         details: pickLeadDetails(snap),
       });
+      return;
     }
+
+    const prevServerStatus = leadDetailServerStatusRef.current;
+    if (prevServerStatus !== null && prevServerStatus !== snap.status) {
+      setLeadDetailDraft((prev) => {
+        if (prev == null || prev.status !== prevServerStatus) return prev;
+        return { ...prev, status: snap.status };
+      });
+    }
+    leadDetailServerStatusRef.current = snap.status;
   }, [selectedLeadId, leads, currentAgency.id]);
 
   /** Display + save payload — only trust draft after it is hydrated for this lead id */
@@ -1022,9 +1035,9 @@ export default function CRMPage() {
     e.preventDefault();
     if (creatingLeadRef.current) return;
     if (leadEntryMode === 'existing' && !selectedCustomerId) return;
+    creatingLeadRef.current = true;
 
     void runLeadAction('Create lead', async () => {
-      creatingLeadRef.current = true;
       setCreatingLead(true);
       try {
         const created = await addLead({
@@ -1117,7 +1130,13 @@ export default function CRMPage() {
   };
 
   const handleStatusChange = (leadId: string, status: Lead['status']) => {
-    void runLeadAction('Update status', () => updateLeadStatus(leadId, status), 'Status updated');
+    void runLeadAction('Update status', async () => {
+      await updateLeadStatus(leadId, status);
+      if (leadId === selectedLeadId) {
+        leadDetailServerStatusRef.current = status;
+        setLeadDetailDraft((prev) => (prev ? { ...prev, status } : prev));
+      }
+    }, 'Status updated');
   };
 
   const handleRefreshLeads = () => {
@@ -1158,8 +1177,15 @@ export default function CRMPage() {
       )}
 
       {leadsError && !leadsLoading && (
-        <div className="crm-alert-error text-xs">
-          Could not load leads: {leadsError}
+        <div className="crm-alert-error text-xs flex flex-wrap items-center justify-between gap-2">
+          <span>Could not load leads: {leadsError}</span>
+          <button
+            type="button"
+            className="crm-btn-secondary text-[11px] px-2.5 py-1"
+            onClick={() => void refreshLeads()}
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -1760,7 +1786,7 @@ export default function CRMPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
                   <label className="block font-bold text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
                     Email

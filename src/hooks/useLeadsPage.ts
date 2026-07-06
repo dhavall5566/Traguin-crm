@@ -87,6 +87,20 @@ export type OptimisticTimelineMutation<T = string | undefined> = {
   promise: Promise<T>;
 };
 
+async function withTransientRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+    }
+  }
+  throw lastError;
+}
+
 function syncCustomersLinkedToLeads(leads: LeadRecord[]): void {
   const cached = getCrmWorkspaceList<Customer>(CRM_CACHE.customers);
   const cachedIds = new Set((cached?.items ?? []).map((row) => row.id));
@@ -132,24 +146,26 @@ export function useLeadsPage() {
       setLoading(true);
     }
     try {
-      await loadProgressiveCrmList<
-        Awaited<ReturnType<typeof listLeads>>["items"][number],
-        LeadRecord
-      >({
-        cachePrefix: CRM_CACHE.leads,
-        fetchPage: bindCrmListFetch(listLeads),
-        mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
-        force: true,
-        onFirstPage: (firstItems) => {
-          setLeads(firstItems);
-          setLoading(false);
-        },
-        onComplete: (allItems) => {
-          setLeads(allItems);
-          setBackgroundLoading(false);
-          syncCustomersLinkedToLeads(allItems);
-        },
-      });
+      await withTransientRetry(() =>
+        loadProgressiveCrmList<
+          Awaited<ReturnType<typeof listLeads>>["items"][number],
+          LeadRecord
+        >({
+          cachePrefix: CRM_CACHE.leads,
+          fetchPage: bindCrmListFetch(listLeads),
+          mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
+          force: true,
+          onFirstPage: (firstItems) => {
+            setLeads(firstItems);
+            setLoading(false);
+          },
+          onComplete: (allItems) => {
+            setLeads(allItems);
+            setBackgroundLoading(false);
+            syncCustomersLinkedToLeads(allItems);
+          },
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load leads");
       setLoading(false);
@@ -178,27 +194,29 @@ export function useLeadsPage() {
         const names = userNameMap(users);
         userNameByIdRef.current = names;
 
-        await loadProgressiveCrmList<
-          Awaited<ReturnType<typeof listLeads>>["items"][number],
-          LeadRecord
-        >({
-          cachePrefix: CRM_CACHE.leads,
-          fetchPage: bindCrmListFetch(listLeads),
-          mapItem: (item) => applyLeadRecord(item, names, extras),
-          signal: controller.signal,
-          onFirstPage: (firstItems, firstTotal) => {
-            if (cancelled) return;
-            setLeads(firstItems);
-            setLoading(false);
-            if (firstItems.length < firstTotal) setBackgroundLoading(true);
-          },
-          onComplete: (allItems) => {
-            if (cancelled) return;
-            setLeads(allItems);
-            setBackgroundLoading(false);
-            syncCustomersLinkedToLeads(allItems);
-          },
-        });
+        await withTransientRetry(() =>
+          loadProgressiveCrmList<
+            Awaited<ReturnType<typeof listLeads>>["items"][number],
+            LeadRecord
+          >({
+            cachePrefix: CRM_CACHE.leads,
+            fetchPage: bindCrmListFetch(listLeads),
+            mapItem: (item) => applyLeadRecord(item, names, extras),
+            signal: controller.signal,
+            onFirstPage: (firstItems, firstTotal) => {
+              if (cancelled) return;
+              setLeads(firstItems);
+              setLoading(false);
+              if (firstItems.length < firstTotal) setBackgroundLoading(true);
+            },
+            onComplete: (allItems) => {
+              if (cancelled) return;
+              setLeads(allItems);
+              setBackgroundLoading(false);
+              syncCustomersLinkedToLeads(allItems);
+            },
+          }),
+        );
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load leads");
@@ -310,6 +328,14 @@ export function useLeadsPage() {
       const old = leads.find((l) => l.id === leadId);
       if (!old || old.status === status) return;
 
+      const lockKey = `status:${leadId}`;
+      if (leadMutationLockRef.current.has(lockKey)) {
+        return;
+      }
+      leadMutationLockRef.current.add(lockKey);
+
+      markLeadLocallyMutated(leadId);
+
       setLeads((prev) =>
         prev.map((l) => (l.id === leadId ? { ...l, status } : l)),
       );
@@ -324,6 +350,8 @@ export function useLeadsPage() {
         );
         patchCrmWorkspaceItem(CRM_CACHE.leads, leadId, { status: old.status });
         throw error;
+      } finally {
+        leadMutationLockRef.current.delete(lockKey);
       }
     },
     [leads, replaceLeadInState],
@@ -337,6 +365,8 @@ export function useLeadsPage() {
       }
       const scalarKeys = Object.keys(scalar) as (keyof LeadUpdateInput)[];
       if (scalarKeys.length === 0) return;
+
+      markLeadLocallyMutated(leadId);
 
       const snapshot = leads.find((l) => l.id === leadId);
       if (snapshot) {

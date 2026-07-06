@@ -8,14 +8,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ detail: "Not authenticated." }, { status: 401 });
   }
 
-  const response = await fetch(`${getCrmApiBaseUrl()}/api/crm/auth/me`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getCrmApiBaseUrl()}/api/crm/auth/me`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json(
+      { detail: "Unable to reach the API server." },
+      { status: 503 },
+    );
+  }
 
   const body = await response.text();
   return new NextResponse(body, {

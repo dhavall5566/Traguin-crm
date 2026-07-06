@@ -16,15 +16,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ detail: "Email and password are required." }, { status: 400 });
   }
 
-  const response = await fetch(`${getCrmApiBaseUrl()}/api/crm/auth/login`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getCrmApiBaseUrl()}/api/crm/auth/login`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+      cache: "no-store",
+    });
+  } catch {
+    return NextResponse.json(
+      { detail: "Unable to reach the API server. Start the backend on port 8001 and try again." },
+      { status: 503 },
+    );
+  }
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {

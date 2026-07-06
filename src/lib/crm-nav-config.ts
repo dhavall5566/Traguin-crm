@@ -11,6 +11,8 @@ import {
   CalendarRange,
   ClipboardList,
   Settings,
+  Mail,
+  Bell,
 } from "lucide-react";
 import { RBAC_NAV_MODULE, type RbacModuleKey } from "@/lib/rbac";
 
@@ -19,12 +21,17 @@ export type CrmNavItem = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   rbacModule: RbacModuleKey;
+  children?: CrmNavItem[];
 };
 
 export type CrmNavGroup = {
   label: string;
   items: CrmNavItem[];
 };
+
+function flattenNavItems(items: CrmNavItem[]): CrmNavItem[] {
+  return items.flatMap((item) => [item, ...(item.children ? flattenNavItems(item.children) : [])]);
+}
 
 /** Sidebar navigation grouped to match the Traguin CRM shell design. */
 export const CRM_NAV_GROUPS: CrmNavGroup[] = [
@@ -113,12 +120,32 @@ export const CRM_NAV_GROUPS: CrmNavGroup[] = [
       },
       {
         name: "Settings",
-        href: "/dashboard/settings",
+        href: "/dashboard/settings/general",
         icon: Settings,
         rbacModule: "workspace_settings",
+      },
+      {
+        name: "Email Setup",
+        href: "/dashboard/settings/email-setup",
+        icon: Mail,
+        rbacModule: "workspace_settings",
+        children: [
+          {
+            name: "SMTP",
+            href: "/dashboard/settings/smtp",
+            icon: Mail,
+            rbacModule: "workspace_settings",
+          },
+          {
+            name: "Email configuration",
+            href: "/dashboard/settings/email",
+            icon: Bell,
+            rbacModule: "workspace_settings",
+          },
+        ],
       },
     ],
   },
 ];
 
-export const CRM_NAV_FLAT: CrmNavItem[] = CRM_NAV_GROUPS.flatMap((g) => g.items);
+export const CRM_NAV_FLAT: CrmNavItem[] = CRM_NAV_GROUPS.flatMap((g) => flattenNavItems(g.items));

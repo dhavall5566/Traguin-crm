@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { SettingsSmtpPanel } from '@/components/settings/SettingsSmtpPanel';
 
-export default function SmtpSettingsRedirectPage() {
-  redirect('/dashboard/settings?tab=smtp');
+export default function SmtpSettingsPage() {
+  return <SettingsSmtpPanel />;
 }

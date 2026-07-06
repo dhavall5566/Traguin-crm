@@ -11,6 +11,7 @@ import {
   LogOut,
   Bell,
   Search,
+  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -20,9 +21,207 @@ import { prefetchCrmNavRoute } from '@/lib/api/crm-prefetch';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
 import { useLeadRealtimeNotifications } from '@/hooks/useLeadRealtimeNotifications';
 import { useLeadNotifications, type LeadNotificationItem } from '@/lib/lead-notifications';
-import { CRM_NAV_GROUPS, type CrmNavGroup } from '@/lib/crm-nav-config';
+import { CRM_NAV_GROUPS, type CrmNavGroup, type CrmNavItem } from '@/lib/crm-nav-config';
 import { getCrmBreadcrumbLabel } from '@/lib/crm-breadcrumbs';
 import { traguinLogo, TRAGUIN_LOGO_SRC } from '@/lib/brand/traguin-logo';
+
+function navItemIsActive(pathname: string, href: string) {
+  if (href === '/dashboard') return pathname === href;
+  if (href.endsWith('/general') && pathname === '/dashboard/settings') return true;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function navTreeHasActive(pathname: string, item: CrmNavItem): boolean {
+  const onLanding =
+    pathname === item.href ||
+    (item.href.endsWith('/general') && pathname === '/dashboard/settings');
+  if (!item.children?.length) return navItemIsActive(pathname, item.href);
+  return onLanding || item.children.some((child) => navTreeHasActive(pathname, child));
+}
+
+function navParentLinkIsActive(pathname: string, item: CrmNavItem): boolean {
+  return (
+    pathname === item.href ||
+    (item.href.endsWith('/general') && pathname === '/dashboard/settings')
+  );
+}
+
+function filterNavItems(items: CrmNavItem[], canViewItem: (item: CrmNavItem) => boolean): CrmNavItem[] {
+  return items
+    .map((item) => {
+      if (item.children?.length) {
+        const children = filterNavItems(item.children, canViewItem);
+        if (children.length === 0) return null;
+        return { ...item, children };
+      }
+      return canViewItem(item) ? item : null;
+    })
+    .filter((item): item is CrmNavItem => item !== null);
+}
+
+function prefetchNavTree(item: CrmNavItem, onPrefetch: (href: string) => void) {
+  onPrefetch(item.href);
+  if (item.children?.length) {
+    item.children.forEach((child) => prefetchNavTree(child, onPrefetch));
+  }
+}
+
+function CrmAccountBar({
+  name,
+  role,
+  initials,
+  onLogout,
+  className,
+}: {
+  name: string;
+  role: string;
+  initials: string;
+  onLogout: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={`crm-account-bar${className ? ` ${className}` : ''}`}>
+      <div className="crm-account-bar__identity">
+        <span className="crm-account-bar__avatar" aria-hidden>
+          {initials}
+        </span>
+        <div className="crm-account-bar__meta">
+          <span className="crm-account-bar__name">{name}</span>
+          <span className="crm-account-bar__role">{role}</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onLogout}
+        className="crm-account-bar__logout"
+        title="Sign out"
+        aria-label="Sign out"
+      >
+        <LogOut className="w-4 h-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function SidebarNavItem({
+  item,
+  pathname,
+  onNavigate,
+  onPrefetch,
+  depth = 0,
+}: {
+  item: CrmNavItem;
+  pathname: string;
+  onNavigate?: () => void;
+  onPrefetch: (href: string) => void;
+  depth?: number;
+}) {
+  const children = item.children ?? [];
+  const hasChildren = children.length > 0;
+  const parentLinkActive = hasChildren && navParentLinkIsActive(pathname, item);
+  const childBranchActive =
+    hasChildren && children.some((child) => navTreeHasActive(pathname, child));
+  const branchActive = hasChildren && navTreeHasActive(pathname, item);
+  const [expanded, setExpanded] = useState(() => Boolean(branchActive));
+
+  useEffect(() => {
+    if (branchActive) setExpanded(true);
+  }, [branchActive]);
+
+  if (hasChildren) {
+    const Icon = item.icon;
+    const sectionActive = Boolean(parentLinkActive);
+    const sectionOpen = Boolean(childBranchActive && !parentLinkActive);
+
+    return (
+      <div
+        className={`crm-nav-section ${expanded ? 'crm-nav-section--open' : ''} ${sectionOpen ? 'crm-nav-section--open-branch' : ''}`}
+      >
+        <div className="crm-nav-section__header">
+          <Link
+            href={item.href}
+            onClick={onNavigate}
+            onMouseEnter={() => onPrefetch(item.href)}
+            onFocus={() => onPrefetch(item.href)}
+            className={`crm-nav-link crm-nav-section__link ${sectionActive ? 'crm-nav-link--active' : sectionOpen ? 'crm-nav-section__link--branch' : ''}`}
+            aria-current={sectionActive ? 'page' : undefined}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <span>{item.name}</span>
+          </Link>
+          <button
+            type="button"
+            className="crm-nav-section__toggle"
+            aria-expanded={expanded}
+            aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}
+            onClick={() => setExpanded((open) => !open)}
+          >
+            {expanded ? (
+              <ChevronDown className="w-4 h-4" aria-hidden />
+            ) : (
+              <ChevronRight className="w-4 h-4" aria-hidden />
+            )}
+          </button>
+        </div>
+        {expanded ? (
+          <div className="crm-nav-section__panel" role="group" aria-label={`${item.name} subtabs`}>
+            {children.map((child) => (
+              <SidebarNavItem
+                key={`${item.name}-${child.name}`}
+                item={child}
+                pathname={pathname}
+                onNavigate={onNavigate}
+                onPrefetch={onPrefetch}
+                depth={depth + 1}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <SidebarNavLink
+      item={item}
+      pathname={pathname}
+      onNavigate={onNavigate}
+      onPrefetch={onPrefetch}
+      nested={depth > 0}
+    />
+  );
+}
+
+function SidebarNavLink({
+  item,
+  pathname,
+  onNavigate,
+  onPrefetch,
+  nested = false,
+}: {
+  item: CrmNavItem;
+  pathname: string;
+  onNavigate?: () => void;
+  onPrefetch: (href: string) => void;
+  nested?: boolean;
+}) {
+  const isActive = navItemIsActive(pathname, item.href);
+  const Icon = item.icon;
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      onMouseEnter={() => onPrefetch(item.href)}
+      onFocus={() => onPrefetch(item.href)}
+      className={`${nested ? 'crm-nav-subtab' : 'crm-nav-link group'} ${isActive ? (nested ? 'crm-nav-subtab--active' : 'crm-nav-link--active') : ''}`}
+      aria-current={isActive ? 'page' : undefined}
+    >
+      {!nested && <Icon className="w-4 h-4 shrink-0" />}
+      <span>{item.name}</span>
+    </Link>
+  );
+}
 
 function SidebarNavGroups({
   groups,
@@ -41,23 +240,15 @@ function SidebarNavGroups({
         <div key={group.label} className="crm-nav-group">
           <p className="crm-nav-group__label">{group.label}</p>
           <nav className="crm-sidebar-nav" aria-label={`${group.label} navigation`}>
-            {group.items.map((item) => {
-              const isActive = pathname === item.href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={`${group.label}-${item.name}`}
-                  href={item.href}
-                  onClick={onNavigate}
-                  onMouseEnter={() => onPrefetch(item.href)}
-                  onFocus={() => onPrefetch(item.href)}
-                  className={`crm-nav-link group ${isActive ? 'crm-nav-link--active' : ''}`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
+            {group.items.map((item) => (
+              <SidebarNavItem
+                key={`${group.label}-${item.name}`}
+                item={item}
+                pathname={pathname}
+                onNavigate={onNavigate}
+                onPrefetch={onPrefetch}
+              />
+            ))}
           </nav>
         </div>
       ))}
@@ -245,19 +436,22 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const filteredNavGroups = useMemo((): CrmNavGroup[] => {
     if (!currentUser) return [];
     const agencyId = currentAgency.id;
-    const canSettings = canAccessModuleView(
-      currentUser.role,
-      agencyId,
-      'workspace_settings',
-      roleDefinitions,
-    );
+
+    const canViewItem = (item: CrmNavItem) => {
+      if (item.rbacModule === 'workspace_settings') {
+        return canAccessModuleView(
+          currentUser.role,
+          agencyId,
+          'workspace_settings',
+          roleDefinitions,
+        );
+      }
+      return canAccessModuleView(currentUser.role, agencyId, item.rbacModule, roleDefinitions);
+    };
 
     return CRM_NAV_GROUPS.map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (item.rbacModule === 'workspace_settings') return canSettings;
-        return canAccessModuleView(currentUser.role, agencyId, item.rbacModule, roleDefinitions);
-      }),
+      items: filterNavItems(group.items, canViewItem),
     })).filter((group) => group.items.length > 0);
   }, [currentAgency.id, currentUser, roleDefinitions]);
 
@@ -295,7 +489,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   useEffect(() => {
     prefetchCrmNavRoute(pathname);
     filteredNavGroups.forEach((group) =>
-      group.items.forEach((item) => prefetchCrmNavRoute(item.href)),
+      group.items.forEach((item) => prefetchNavTree(item, prefetchCrmNavRoute)),
     );
   }, [pathname, filteredNavGroups]);
 
@@ -408,7 +602,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
             onPrefetch={handleNavPrefetch}
           />
         </div>
-
       </aside>
 
       <div className="crm-main-column min-h-0 flex-1 flex flex-col">
@@ -512,22 +705,13 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
               )}
             </div>
 
-            <div className="crm-topbar-profile">
-              <span className="crm-avatar h-9 w-9 text-[11px] shrink-0">{userInitials}</span>
-              <div className="crm-topbar-profile__copy">
-                <span className="crm-topbar-profile__name">{currentUser?.name ?? 'Account'}</span>
-                <span className="crm-topbar-profile__role">{currentUser?.role ?? ''}</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="crm-icon-btn"
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <CrmAccountBar
+              className="crm-account-bar--topbar"
+              name={currentUser?.name ?? 'Account'}
+              role={currentUser?.role ?? ''}
+              initials={userInitials}
+              onLogout={() => void handleLogout()}
+            />
           </div>
         </header>
 
@@ -572,12 +756,15 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
             </div>
 
             <div className="crm-sidebar-footer shrink-0">
-              <button
-                onClick={handleLogout}
-                className="crm-switch-cms text-destructive"
-              >
-                Logout
-              </button>
+              <CrmAccountBar
+                name={currentUser?.name ?? 'Account'}
+                role={currentUser?.role ?? ''}
+                initials={userInitials}
+                onLogout={() => {
+                  setMobileMenuOpen(false);
+                  void handleLogout();
+                }}
+              />
             </div>
           </div>
         </div>

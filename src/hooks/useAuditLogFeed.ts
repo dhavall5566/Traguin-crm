@@ -105,7 +105,9 @@ export function useAuditLogFeed(enabled = true) {
     const refreshAuditLogs = () => {
       invalidateCrmListCache(CRM_CACHE.auditLogs);
       const controller = new AbortController();
-      void loadAuditFeed(setAuditLogs, controller.signal);
+      void loadAuditFeed(setAuditLogs, controller.signal).catch(() => {
+        /* keep last known feed when refresh fails */
+      });
     };
 
     window.addEventListener(CRM_LEAD_INBOUND_EVENT, refreshAuditLogs);

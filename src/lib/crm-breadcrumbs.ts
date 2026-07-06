@@ -10,7 +10,10 @@ const CRM_PAGE_LABELS: Record<string, string> = {
   "/dashboard/finance": "Billing",
   "/dashboard/employees": "Team access",
   "/dashboard/settings": "Settings",
-  "/dashboard/settings/smtp": "SMTP setup",
+  "/dashboard/settings/general": "Settings",
+  "/dashboard/settings/email-setup": "Email Setup",
+  "/dashboard/settings/smtp": "SMTP",
+  "/dashboard/settings/email": "Email configuration",
 };
 
 export function getCrmBreadcrumbLabel(pathname: string): string {

@@ -42,6 +42,7 @@ export default function PackagesPage() {
     loading,
     error,
     filterOptions,
+    refresh,
   } = usePackagesCatalog({ published: publishedFilter, filters });
 
   const page = Math.floor(offset / pageSize) + 1;
@@ -107,7 +108,7 @@ export default function PackagesPage() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by title, slug, or destination…"
+              placeholder="Search by title, serial code, or destination…"
               className="crm-packages-header__search-input"
               aria-label="Search packages"
             />
@@ -220,7 +221,12 @@ export default function PackagesPage() {
         </div>
 
         {error ? (
-          <p className="crm-table-error">{error}</p>
+          <div className="crm-table-error">
+            <p>{error}</p>
+            <button type="button" className="crm-btn-secondary mt-2" onClick={() => void refresh()}>
+              Try again
+            </button>
+          </div>
         ) : loading ? (
           <CrmTableSkeleton rows={8} columns={6} />
         ) : items.length === 0 ? (
@@ -236,7 +242,7 @@ export default function PackagesPage() {
                     <th>Duration</th>
                     <th>Price</th>
                     <th>Visibility</th>
-                    <th>Slug</th>
+                    <th>Serial code</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -264,7 +270,7 @@ export default function PackagesPage() {
                           </span>
                         )}
                       </td>
-                      <td className="font-mono text-xs text-muted-foreground">{item.slug}</td>
+                      <td className="font-mono text-xs text-muted-foreground">{item.serialCode ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
