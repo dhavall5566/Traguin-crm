@@ -13,14 +13,23 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
+  ArrowUpRight,
+  CheckCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { prefetchCrmNavRoute } from '@/lib/api/crm-prefetch';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
-import { useLeadRealtimeNotifications } from '@/hooks/useLeadRealtimeNotifications';
+import { usePendingLeadAssignments } from '@/hooks/usePendingLeadAssignments';
+import { useLeadRealtimeNotifications, CRM_LEAD_INBOUND_EVENT } from '@/hooks/useLeadRealtimeNotifications';
 import { useLeadNotifications, type LeadNotificationItem } from '@/lib/lead-notifications';
+import { LeadAssignmentNotificationEntry } from '@/components/crm/LeadAssignmentNotificationEntry';
+import {
+  formatAuditLogDetails,
+  getAuditNotificationHref,
+  isAuditNotificationClickable,
+} from '@/lib/audit-notification-routes';
 import { CRM_NAV_GROUPS, type CrmNavGroup, type CrmNavItem } from '@/lib/crm-nav-config';
 import { getCrmBreadcrumbLabel } from '@/lib/crm-breadcrumbs';
 import { traguinLogo, TRAGUIN_LOGO_SRC } from '@/lib/brand/traguin-logo';
@@ -280,16 +289,37 @@ function AgencyLogo({ name, logoUrl, className }: { name: string; logoUrl?: stri
 function getActionBadgeClass(action: string) {
   switch (action) {
     case 'CREATE':
-      return 'bg-emerald-500/10 text-emerald-500';
+      return 'crm-notif-item__badge--create';
     case 'UPDATE':
-      return 'bg-primary/10 text-primary';
+      return 'crm-notif-item__badge--update';
     case 'DELETE':
-      return 'bg-red-500/10 text-red-500';
+      return 'crm-notif-item__badge--delete';
     case 'LOGIN':
-      return 'bg-sky-500/10 text-sky-500';
+      return 'crm-notif-item__badge--login';
     default:
-      return 'bg-secondary text-muted-foreground';
+      return 'crm-notif-item__badge--default';
   }
+}
+
+function formatActionLabel(action: string): string {
+  if (!action) return 'Activity';
+  return action.charAt(0) + action.slice(1).toLowerCase();
+}
+
+function initialsFromName(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('') || '?'
+  );
+}
+
+/** Shorten raw UUIDs in audit copy for scan-friendly notifications. */
+function formatAuditDetails(details: string): string {
+  return formatAuditLogDetails(details);
 }
 
 function formatLogTime(iso: string) {
@@ -318,57 +348,78 @@ function LeadNotificationEntry({
   item: LeadNotificationItem;
   onOpen: () => void;
 }) {
-  const kindClass =
-    item.kind === 'new' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-600';
-
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="w-full p-2 rounded-lg bg-primary/5 border border-primary/15 text-left transition-colors hover:bg-primary/10"
-    >
-      <div className="flex justify-between items-start gap-2">
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center flex-wrap gap-1.5">
-            <span className="font-semibold text-[10px] text-foreground">Live alert</span>
-            <span className={`text-[8px] px-1 py-0.5 rounded font-bold ${kindClass}`}>
-              {item.kind === 'new' ? 'NEW LEAD' : 'RETURNING'}
-            </span>
-            <span className="text-[8px] px-1 py-0.5 rounded bg-secondary text-muted-foreground font-medium">
-              Lead
-            </span>
-          </div>
-          <p className="text-[11px] text-foreground leading-snug">{item.message}</p>
+    <button type="button" onClick={onOpen} className="crm-notif-item crm-notif-item--clickable">
+      <span
+        className={`crm-notif-item__avatar ${item.kind === 'new' ? 'crm-notif-item__avatar--lead-new' : 'crm-notif-item__avatar--lead-return'}`}
+        aria-hidden
+      >
+        {item.kind === 'new' ? 'N' : 'R'}
+      </span>
+      <div className="crm-notif-item__body">
+        <div className="crm-notif-item__top">
+          <span className="crm-notif-item__actor">Live alert</span>
+          <span
+            className={`crm-notif-item__badge ${item.kind === 'new' ? 'crm-notif-item__badge--create' : 'crm-notif-item__badge--update'}`}
+          >
+            {item.kind === 'new' ? 'New lead' : 'Returning'}
+          </span>
+          <span className="crm-notif-item__entity">Lead</span>
         </div>
-        <span className="text-[9px] text-muted-foreground shrink-0" title={new Date(item.createdAt).toLocaleString()}>
+        <p className="crm-notif-item__detail">{item.message}</p>
+      </div>
+      <div className="crm-notif-item__aside">
+        <time className="crm-notif-item__time" title={new Date(item.createdAt).toLocaleString()}>
           {formatLogTime(item.createdAt)}
-        </span>
+        </time>
+        <ArrowUpRight className="crm-notif-item__chevron" aria-hidden />
       </div>
     </button>
   );
 }
 
-function AuditLogEntry({ log }: { log: AuditLog }) {
-  return (
-    <div className="p-2 rounded-lg bg-secondary/50 border border-border/30">
-      <div className="flex justify-between items-start gap-2">
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center flex-wrap gap-1.5">
-            <span className="font-semibold text-[10px] text-foreground">{log.userName}</span>
-            <span className={`text-[8px] px-1 py-0.5 rounded font-bold ${getActionBadgeClass(log.action)}`}>
-              {log.action}
-            </span>
-            <span className="text-[8px] px-1 py-0.5 rounded bg-secondary text-muted-foreground font-medium">
-              {log.entityType}
-            </span>
-          </div>
-          <p className="text-[11px] text-foreground leading-snug">{log.details}</p>
+function AuditLogEntry({
+  log,
+  onOpen,
+}: {
+  log: AuditLog;
+  onOpen?: () => void;
+}) {
+  const clickable = Boolean(onOpen && isAuditNotificationClickable(log));
+  const shellClass = `crm-notif-item${clickable ? ' crm-notif-item--clickable' : ''}`;
+
+  const inner = (
+    <>
+      <span className="crm-notif-item__avatar" aria-hidden>
+        {initialsFromName(log.userName)}
+      </span>
+      <div className="crm-notif-item__body">
+        <div className="crm-notif-item__top">
+          <span className="crm-notif-item__actor">{log.userName}</span>
+          <span className={`crm-notif-item__badge ${getActionBadgeClass(log.action)}`}>
+            {formatActionLabel(log.action)}
+          </span>
+          <span className="crm-notif-item__entity">{log.entityType}</span>
         </div>
-        <span className="text-[9px] text-muted-foreground shrink-0" title={new Date(log.createdAt).toLocaleString()}>
-          {formatLogTime(log.createdAt)}
-        </span>
+        <p className="crm-notif-item__detail">{formatAuditDetails(log.details)}</p>
       </div>
-    </div>
+      <div className="crm-notif-item__aside">
+        <time className="crm-notif-item__time" title={new Date(log.createdAt).toLocaleString()}>
+          {formatLogTime(log.createdAt)}
+        </time>
+        {clickable ? <ArrowUpRight className="crm-notif-item__chevron" aria-hidden /> : null}
+      </div>
+    </>
+  );
+
+  if (!clickable) {
+    return <div className={shellClass}>{inner}</div>;
+  }
+
+  return (
+    <button type="button" onClick={onOpen} className={shellClass}>
+      {inner}
+    </button>
   );
 }
 
@@ -389,8 +440,15 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const authStatus = useStore((state) => state.authStatus);
   const clearAuthSession = useStore((state) => state.clearAuthSession);
   const roleDefinitions = useStore((state) => state.roleDefinitions);
-  const { auditLogs } = useAuditLogFeed(Boolean(currentUser));
+  const { auditLogs, refresh: refreshAuditLogs } = useAuditLogFeed(Boolean(currentUser));
   const leadNotifications = useLeadNotifications();
+  const {
+    items: pendingAssignments,
+    accept: acceptAssignment,
+    reject: rejectAssignment,
+    actionId: assignmentActionId,
+    refresh: refreshPendingAssignments,
+  } = usePendingLeadAssignments(authStatus === 'authenticated' && Boolean(currentUser));
 
   const isDashboardRoute = pathname.startsWith('/dashboard');
   useLeadRealtimeNotifications(authStatus === 'authenticated' && isDashboardRoute);
@@ -405,10 +463,16 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   const notificationFeed = useMemo(() => {
     type FeedItem =
+      | { kind: 'assignment'; sortAt: string; assignment: (typeof pendingAssignments)[number] }
       | { kind: 'lead'; sortAt: string; lead: LeadNotificationItem }
       | { kind: 'audit'; sortAt: string; log: AuditLog };
 
     const items: FeedItem[] = [
+      ...pendingAssignments.map((assignment) => ({
+        kind: 'assignment' as const,
+        sortAt: assignment.updatedAt,
+        assignment,
+      })),
       ...leadNotifications.map((lead) => ({
         kind: 'lead' as const,
         sortAt: lead.createdAt,
@@ -423,15 +487,16 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
     return items
       .sort((a, b) => new Date(b.sortAt).getTime() - new Date(a.sortAt).getTime())
-      .slice(0, 10);
-  }, [agencyAuditLogs, leadNotifications]);
+      .slice(0, 12);
+  }, [agencyAuditLogs, leadNotifications, pendingAssignments]);
 
   const unreadCount = useMemo(() => {
-    if (!lastSeenAt) return 0;
+    const assignmentCount = pendingAssignments.length;
+    if (!lastSeenAt) return assignmentCount;
     const unreadAudits = agencyAuditLogs.filter((log) => log.createdAt > lastSeenAt).length;
     const unreadLeads = leadNotifications.filter((item) => item.createdAt > lastSeenAt).length;
-    return unreadAudits + unreadLeads;
-  }, [agencyAuditLogs, lastSeenAt, leadNotifications]);
+    return assignmentCount + unreadAudits + unreadLeads;
+  }, [agencyAuditLogs, lastSeenAt, leadNotifications, pendingAssignments]);
 
   const filteredNavGroups = useMemo((): CrmNavGroup[] => {
     if (!currentUser) return [];
@@ -468,6 +533,9 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const handleToggleNotifications = () => {
     if (!showNotifications) {
       markLogsSeen();
+      void refreshPendingAssignments();
+      refreshAuditLogs();
+      window.dispatchEvent(new CustomEvent(CRM_LEAD_INBOUND_EVENT));
     }
     setShowNotifications((open) => !open);
   };
@@ -537,7 +605,24 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   const handleOpenLeadNotification = (leadId: string) => {
     handleDismissNotifications();
-    router.push(`/dashboard/crm?openLead=${leadId}`);
+    router.push(`/dashboard/crm?openLead=${encodeURIComponent(leadId)}`);
+  };
+
+  const handleOpenAuditNotification = (log: AuditLog) => {
+    const href = getAuditNotificationHref(log);
+    if (!href) return;
+    handleDismissNotifications();
+    router.push(href);
+  };
+
+  const handleAcceptAssignment = async (leadId: string) => {
+    await acceptAssignment(leadId);
+    handleDismissNotifications();
+    router.push(`/dashboard/crm?openLead=${encodeURIComponent(leadId)}`);
+  };
+
+  const handleRejectAssignment = async (leadId: string) => {
+    await rejectAssignment(leadId);
   };
 
   const handleLogout = async () => {
@@ -654,52 +739,75 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
               </button>
 
               {showNotifications && (
-                <div className="crm-dropdown w-80 p-2 text-xs">
-                  <div className="flex justify-between items-center border-b border-border pb-2 mb-2 px-1">
-                    <div>
-                      <span className="font-semibold block">Recent Activity</span>
-                      <span className="text-[9px] text-muted-foreground">
-                        {notificationFeed.length} update{notificationFeed.length === 1 ? '' : 's'} · {currentAgency.name}
-                      </span>
+                <div className="crm-notif-panel" role="dialog" aria-label="Recent activity">
+                  <header className="crm-notif-panel__head">
+                    <div className="crm-notif-panel__intro">
+                      <p className="crm-notif-panel__eyebrow">Activity feed</p>
+                      <h2 className="crm-notif-panel__title">Recent Activity</h2>
+                      <p className="crm-notif-panel__meta">
+                        {notificationFeed.length} update{notificationFeed.length === 1 ? '' : 's'} ·{' '}
+                        {currentAgency.name}
+                      </p>
                     </div>
                     <button
                       type="button"
                       onClick={handleDismissNotifications}
-                      className="text-[10px] text-primary hover:underline shrink-0"
+                      className="crm-notif-panel__mark-read"
+                      title="Mark all as read"
                     >
-                      Dismiss
+                      <CheckCheck className="w-3.5 h-3.5" aria-hidden />
+                      Mark read
                     </button>
-                  </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                  </header>
+
+                  <div className="crm-notif-panel__list">
                     {notificationFeed.length > 0 ? (
                       notificationFeed.map((entry, i) =>
-                        entry.kind === 'lead' ? (
+                        entry.kind === 'assignment' ? (
+                          <LeadAssignmentNotificationEntry
+                            key={`assignment-${entry.assignment.id}-${i}`}
+                            item={entry.assignment}
+                            busy={assignmentActionId === entry.assignment.id}
+                            onAccept={() => void handleAcceptAssignment(entry.assignment.id)}
+                            onReject={() => void handleRejectAssignment(entry.assignment.id)}
+                          />
+                        ) : entry.kind === 'lead' ? (
                           <LeadNotificationEntry
                             key={`lead-${entry.lead.id}-${i}`}
                             item={entry.lead}
                             onOpen={() => handleOpenLeadNotification(entry.lead.leadId)}
                           />
                         ) : (
-                          <AuditLogEntry key={`audit-${entry.log.id}-${i}`} log={entry.log} />
+                          <AuditLogEntry
+                            key={`audit-${entry.log.id}-${i}`}
+                            log={entry.log}
+                            onOpen={() => handleOpenAuditNotification(entry.log)}
+                          />
                         ),
                       )
                     ) : (
-                      <div className="py-6 text-center text-muted-foreground text-[11px]">
-                        No activity yet. New leads and CRM actions will appear here.
+                      <div className="crm-notif-panel__empty">
+                        <Bell className="crm-notif-panel__empty-icon" aria-hidden />
+                        <p>No activity yet</p>
+                        <span>New leads, assignments, and CRM actions will appear here.</span>
                       </div>
                     )}
                   </div>
+
                   {canViewStaffPortal && agencyAuditLogs.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleDismissNotifications();
-                        router.push('/dashboard/employees');
-                      }}
-                      className="w-full mt-2 pt-2 border-t border-border text-[10px] text-primary hover:underline"
-                    >
-                      View full audit trail
-                    </button>
+                    <footer className="crm-notif-panel__foot">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleDismissNotifications();
+                          router.push('/dashboard/employees');
+                        }}
+                        className="crm-notif-panel__trail"
+                      >
+                        View full audit trail
+                        <ArrowUpRight className="w-3.5 h-3.5" aria-hidden />
+                      </button>
+                    </footer>
                   )}
                 </div>
               )}

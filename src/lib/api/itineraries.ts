@@ -232,6 +232,20 @@ export async function getItinerary(id: string): Promise<ApiItineraryRead> {
   return crmFetchJson<ApiItineraryRead>(`/api/crm/itineraries/${id}`);
 }
 
+export async function createItineraryFromCmsPackage(input: {
+  cmsPackageId: string;
+  customerId?: string;
+}): Promise<ApiItineraryRead> {
+  return crmFetchJson<ApiItineraryRead>("/api/crm/itineraries/from-cms-package", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cms_package_id: input.cmsPackageId,
+      customer_id: input.customerId ?? null,
+    }),
+  });
+}
+
 export async function createItinerary(input: ItineraryCreateInput): Promise<ApiItineraryRead> {
   const totalPrice = computeItineraryTotalPrice({
     days: input.days ?? [],

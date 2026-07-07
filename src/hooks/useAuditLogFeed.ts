@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listAuditLogs, mapAuditLogFromApi, type ApiAuditLogRead } from "@/lib/api/audit-logs";
 import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
 import { CRM_CACHE, getCrmWorkspaceList } from "@/lib/api/crm-workspace-store";
@@ -11,6 +11,8 @@ import { userNameMap } from "@/lib/api/users";
 import { CRM_LEAD_INBOUND_EVENT } from "@/hooks/useLeadRealtimeNotifications";
 import type { AuditLog } from "@/lib/store";
 
+const AUDIT_POLL_MS = 25_000;
+
 let auditLoadInFlight: Promise<void> | null = null;
 
 function sortAuditLogs(items: AuditLog[]): AuditLog[] {
@@ -19,9 +21,17 @@ function sortAuditLogs(items: AuditLog[]): AuditLog[] {
   );
 }
 
+function isLeadAssignmentAuditLog(log: AuditLog): boolean {
+  return (
+    log.entityType === "Lead" &&
+    (/accepted lead assignment/i.test(log.details) || /rejected lead assignment/i.test(log.details))
+  );
+}
+
 async function loadAuditFeed(
   onUpdate: (items: AuditLog[]) => void,
   signal: AbortSignal,
+  options?: { onAssignmentChange?: () => void; knownIds?: Set<string> },
 ): Promise<void> {
   if (auditLoadInFlight) {
     await auditLoadInFlight;
@@ -45,7 +55,17 @@ async function loadAuditFeed(
       },
       onComplete: (items) => {
         if (signal.aborted) return;
-        onUpdate(sortAuditLogs(items));
+        const sorted = sortAuditLogs(items);
+        if (options?.knownIds) {
+          const bootstrapComplete = options.knownIds.size > 0;
+          const hasNewAssignment =
+            bootstrapComplete &&
+            options.onAssignmentChange &&
+            sorted.some((log) => !options.knownIds!.has(log.id) && isLeadAssignmentAuditLog(log));
+          sorted.forEach((log) => options.knownIds!.add(log.id));
+          if (hasNewAssignment) options.onAssignmentChange!();
+        }
+        onUpdate(sorted);
       },
     });
   })();
@@ -64,6 +84,30 @@ export function useAuditLogFeed(enabled = true) {
     cachedAudit ? sortAuditLogs(cachedAudit.items) : [],
   );
   const [loading, setLoading] = useState(enabled && !cachedAudit);
+  const knownAuditIdsRef = useRef<Set<string>>(
+    new Set((cachedAudit?.items ?? []).map((log) => log.id)),
+  );
+
+  const refreshAuditLogs = useCallback(() => {
+    invalidateCrmListCache(CRM_CACHE.auditLogs);
+    const controller = new AbortController();
+    void loadAuditFeed(
+      (items) => {
+        setAuditLogs(items);
+      },
+      controller.signal,
+      {
+        knownIds: knownAuditIdsRef.current,
+        onAssignmentChange: () => {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent(CRM_LEAD_INBOUND_EVENT));
+          }
+        },
+      },
+    ).catch(() => {
+      /* keep last known feed when refresh fails */
+    });
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -73,18 +117,30 @@ export function useAuditLogFeed(enabled = true) {
 
     if (cachedAudit) {
       setAuditLogs(sortAuditLogs(cachedAudit.items));
+      cachedAudit.items.forEach((log) => knownAuditIdsRef.current.add(log.id));
       setLoading(false);
     }
 
     void (async () => {
       if (!cachedAudit) setLoading(true);
       try {
-        await loadAuditFeed((items) => {
-          if (!cancelled) {
-            setAuditLogs(items);
-            setLoading(false);
-          }
-        }, controller.signal);
+        await loadAuditFeed(
+          (items) => {
+            if (!cancelled) {
+              setAuditLogs(items);
+              setLoading(false);
+            }
+          },
+          controller.signal,
+          {
+            knownIds: knownAuditIdsRef.current,
+            onAssignmentChange: () => {
+              if (!cancelled && typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent(CRM_LEAD_INBOUND_EVENT));
+              }
+            },
+          },
+        );
       } catch {
         if (!cancelled) {
           if (!cachedAudit) setAuditLogs([]);
@@ -102,17 +158,15 @@ export function useAuditLogFeed(enabled = true) {
   useEffect(() => {
     if (!enabled) return;
 
-    const refreshAuditLogs = () => {
-      invalidateCrmListCache(CRM_CACHE.auditLogs);
-      const controller = new AbortController();
-      void loadAuditFeed(setAuditLogs, controller.signal).catch(() => {
-        /* keep last known feed when refresh fails */
-      });
-    };
-
     window.addEventListener(CRM_LEAD_INBOUND_EVENT, refreshAuditLogs);
     return () => window.removeEventListener(CRM_LEAD_INBOUND_EVENT, refreshAuditLogs);
-  }, [enabled]);
+  }, [enabled, refreshAuditLogs]);
 
-  return { auditLogs, loading };
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(() => refreshAuditLogs(), AUDIT_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [enabled, refreshAuditLogs]);
+
+  return { auditLogs, loading, refresh: refreshAuditLogs };
 }

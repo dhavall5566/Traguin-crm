@@ -48,6 +48,9 @@ export interface User {
   role: string; // Admin, Sales, Operations, Finance, Vendor, Customer
 }
 
+export type LeadPriority = 'LOW' | 'MEDIUM' | 'HIGH';
+export type LeadCategory = 'DOMESTIC' | 'INTERNATIONAL' | 'CORPORATE' | 'VISA_ONLY';
+
 export interface Lead extends LeadDetailsFields {
   id: string;
   /** Human-readable reference, e.g. TRG001-ITN */
@@ -62,6 +65,10 @@ export interface Lead extends LeadDetailsFields {
   value: number;
   source?: string;
   assignedToId?: string;
+  assignmentStatus?: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  assignedById?: string;
+  priority?: LeadPriority;
+  leadCategory?: LeadCategory;
   customerId?: string;
   /** Preferred proposal / itinerary for this lead (conversion card). */
   proposalItineraryId?: string;
@@ -245,6 +252,7 @@ export interface AuditLog {
   userName: string;
   action: string;
   entityType: string;
+  entityId?: string;
   details: string;
   createdAt: string;
 }

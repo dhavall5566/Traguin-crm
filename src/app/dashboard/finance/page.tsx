@@ -89,6 +89,15 @@ export default function FinancePage() {
     router.replace('/dashboard/finance', { scroll: false });
   }, [searchParams, invoices, router]);
 
+  /** Notifications: `/dashboard/finance?tab=expenses|payouts|invoices` switches finance tab. */
+  useEffect(() => {
+    const tab = searchParams.get('tab')?.trim();
+    if (tab === 'expenses' || tab === 'payouts' || tab === 'invoices') {
+      setActiveTab(tab);
+      router.replace('/dashboard/finance', { scroll: false });
+    }
+  }, [searchParams, router]);
+
   // API responses are already scoped to the logged-in agency via JWT.
   const agencyInvoices = invoices;
   const agencyPayments = payments;

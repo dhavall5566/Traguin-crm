@@ -48,6 +48,10 @@ export type ApiLeadRead = {
   status: Lead["status"];
   value: number;
   assigned_to_id: string | null;
+  assignment_status: string | null;
+  assigned_by_id: string | null;
+  priority: string | null;
+  lead_category: string | null;
   customer_id: string | null;
   proposal_sent_at: string | null;
   message: string | null;
@@ -138,6 +142,8 @@ export type LeadUpdateInput = Partial<
     | "status"
     | "value"
     | "assignedToId"
+    | "priority"
+    | "leadCategory"
     | "message"
     | "cmsPackageId"
     | keyof LeadDetailsFields
@@ -268,6 +274,10 @@ export function mapLeadFromApi(
     status: lead.status,
     value: lead.value,
     assignedToId: lead.assigned_to_id ?? undefined,
+    assignmentStatus: (lead.assignment_status as Lead['assignmentStatus']) ?? undefined,
+    assignedById: lead.assigned_by_id ?? undefined,
+    priority: (lead.priority as Lead["priority"]) ?? undefined,
+    leadCategory: (lead.lead_category as Lead["leadCategory"]) ?? undefined,
     createdAt: lead.created_at,
     updatedAt: lead.updated_at,
     customerId: lead.customer_id ?? extras?.customerId,
@@ -310,6 +320,8 @@ function leadToApiUpdateBody(input: LeadUpdateInput) {
   if (input.status !== undefined) body.status = input.status;
   if (input.value !== undefined) body.value = input.value;
   if (input.assignedToId !== undefined) body.assigned_to_id = input.assignedToId || null;
+  if (input.priority !== undefined) body.priority = input.priority || null;
+  if (input.leadCategory !== undefined) body.lead_category = input.leadCategory || null;
   if (input.message !== undefined) body.message = input.message?.trim() || null;
   if (input.cmsPackageId !== undefined) body.cms_package_id = input.cmsPackageId || null;
   if (LEAD_DETAIL_KEYS.some((key) => key in input)) {
@@ -375,6 +387,41 @@ export type ApiLeadRecentEvent = {
   created_at: string;
   updated_at: string;
   kind: "new" | "returning";
+  existing_customer?: boolean;
+  customer_id?: string | null;
+  merged_duplicate?: boolean;
+  match_reason?: string | null;
+};
+
+export type LeadIntakeDuplicate = {
+  id: string;
+  lead_code: string | null;
+  title: string;
+  status: Lead["status"];
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+};
+
+export type LeadIntakeCustomer = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+};
+
+export type LeadIntakeCheckResult = {
+  existing_customer: LeadIntakeCustomer | null;
+  canonical_lead: LeadIntakeDuplicate | null;
+  match_reason: string | null;
+  duplicate_leads: LeadIntakeDuplicate[];
+  will_merge: boolean;
+};
+
+export type LeadCreateResult = {
+  lead: ApiLeadRead;
+  merged: boolean;
 };
 
 export async function fetchRecentLeadEvents(since: string): Promise<ApiLeadRecentEvent[]> {
@@ -387,12 +434,24 @@ export async function getLead(id: string): Promise<ApiLeadRead> {
   return crmFetchJson<ApiLeadRead>(`/api/crm/leads/${id}`);
 }
 
+export async function checkLeadIntake(params: {
+  email?: string;
+  phone?: string;
+  excludeLeadId?: string;
+}): Promise<LeadIntakeCheckResult> {
+  const qs = new URLSearchParams();
+  if (params.email?.trim()) qs.set("email", params.email.trim());
+  if (params.phone?.trim()) qs.set("phone", params.phone.trim());
+  if (params.excludeLeadId) qs.set("exclude_lead_id", params.excludeLeadId);
+  return crmFetchJson<LeadIntakeCheckResult>(`/api/crm/leads/intake-check?${qs.toString()}`);
+}
+
 export async function createLead(
   input: LeadCreateInput,
   options?: {
     initialActivity?: { type: string; description: string };
   },
-): Promise<ApiLeadRead> {
+): Promise<LeadCreateResult> {
   const body: Record<string, unknown> = leadToApiCreateBody(input);
   if (options?.initialActivity) {
     body.activities = [
@@ -402,11 +461,22 @@ export async function createLead(
       },
     ];
   }
-  return crmFetchJson<ApiLeadRead>("/api/crm/leads", {
+  const response = await crmFetch("/api/crm/leads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => null);
+    let detail: string | undefined;
+    if (typeof errBody?.detail === "string") {
+      detail = errBody.detail;
+    }
+    throw new Error(detail ?? `Request failed (${response.status})`);
+  }
+  const text = await response.text();
+  const lead = JSON.parse(text) as ApiLeadRead;
+  return { lead, merged: response.status === 200 };
 }
 
 export async function updateLead(
@@ -508,4 +578,62 @@ export function applyLeadRecord(
   extrasMap: Record<string, LeadExtras>,
 ): LeadRecord {
   return mapLeadFromApi(asFullLeadRead(apiLead), userNameById, extrasMap[apiLead.id]);
+}
+
+export type ApiLeadAssignmentPending = {
+  id: string;
+  lead_code: string | null;
+  title: string;
+  first_name: string;
+  last_name: string;
+  source: string | null;
+  phone: string | null;
+  assigned_by_id: string | null;
+  assigned_by_name: string | null;
+  updated_at: string;
+};
+
+export type LeadAssignmentPending = {
+  id: string;
+  leadCode?: string;
+  title: string;
+  firstName: string;
+  lastName: string;
+  source?: string;
+  phone?: string;
+  assignedById?: string;
+  assignedByName?: string;
+  updatedAt: string;
+};
+
+export function mapPendingAssignmentFromApi(row: ApiLeadAssignmentPending): LeadAssignmentPending {
+  return {
+    id: row.id,
+    leadCode: row.lead_code ?? undefined,
+    title: row.title,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    source: row.source ?? undefined,
+    phone: row.phone ?? undefined,
+    assignedById: row.assigned_by_id ?? undefined,
+    assignedByName: row.assigned_by_name ?? undefined,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function listPendingLeadAssignments(): Promise<LeadAssignmentPending[]> {
+  const rows = await crmFetchJson<ApiLeadAssignmentPending[]>("/api/crm/leads/assignments/pending");
+  return rows.map(mapPendingAssignmentFromApi);
+}
+
+export async function acceptLeadAssignment(leadId: string): Promise<ApiLeadRead> {
+  return crmFetchJson<ApiLeadRead>(`/api/crm/leads/${leadId}/assignment/accept`, {
+    method: "POST",
+  });
+}
+
+export async function rejectLeadAssignment(leadId: string): Promise<ApiLeadRead> {
+  return crmFetchJson<ApiLeadRead>(`/api/crm/leads/${leadId}/assignment/reject`, {
+    method: "POST",
+  });
 }

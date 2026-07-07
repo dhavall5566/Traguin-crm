@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { RBAC_MODULE_DEFS, canManageRoleDefinitions } from '@/lib/rbac';
 import { useAgencyUsers } from '@/hooks/useAgencyUsers';
@@ -9,6 +10,7 @@ import { useAgencyRoleCatalog } from '@/hooks/useAgencyRoleCatalog';
 import { useAuditLogFeed } from '@/hooks/useAuditLogFeed';
 import { Search, Plus, X } from 'lucide-react';
 import { StaffUsersTablePanel } from '@/components/staff/StaffUsersTablePanel';
+import { AuditLogListItem } from '@/components/crm/AuditLogListItem';
 import { useCrmToast } from '@/components/ui/CrmToastProvider';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 import { PasswordInput } from '@/components/ui/PasswordInput';
@@ -55,6 +57,8 @@ function StaffPanelSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 export default function EmployeesPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentAgency, currentUser, logAction, roleDefinitions } = useStore();
   const { users, loading, error, createStaffUser, updateStaffUser, deleteStaffUser, updateStaffRole } =
     useAgencyUsers();
@@ -99,6 +103,17 @@ export default function EmployeesPage() {
       ),
     [users, currentAgency.id, search],
   );
+
+  /** Notifications: `/dashboard/employees?openUser=<id>` selects that staff member. */
+  useEffect(() => {
+    const raw = searchParams.get('openUser')?.trim();
+    if (!raw) return;
+    const user = allAgencyUsers.find((u) => u.id === raw);
+    if (!user) return;
+    setStaffTab('members');
+    setSelectedUserId(raw);
+    router.replace('/dashboard/employees', { scroll: false });
+  }, [searchParams, allAgencyUsers, router]);
 
   useEffect(() => {
     if (agencyUsers.length > 0 && !selectedUserId) {
@@ -542,18 +557,7 @@ export default function EmployeesPage() {
                 ) : (
                   <>
                 {agencyAuditLogs.map((log, i) => (
-                  <div key={`${log.id}-${i}`} className="crm-audit-item">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-foreground">{log.userName}</span>
-                        <span className="crm-audit-item__action">{log.action}</span>
-                      </div>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{log.details}</p>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </span>
-                  </div>
+                  <AuditLogListItem key={`${log.id}-${i}`} log={log} timeFormat="full" />
                 ))}
                 {agencyAuditLogs.length === 0 && !auditLoading && (
                   <p className="crm-staff-empty">No activity recorded yet.</p>

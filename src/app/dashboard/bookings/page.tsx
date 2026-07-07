@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, Booking, bookingTravellerLabel } from '@/lib/store';
 import { useBookingsInvoices } from '@/hooks/useBookingsInvoices';
 import { useCustomersPage } from '@/hooks/useCustomersPage';
@@ -55,6 +56,8 @@ function statusBadgeClass(status: Booking['status']): string {
 }
 
 export default function BookingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentAgency } = useStore();
   const { bookings, invoices, loading, backgroundLoading, refresh } = useBookingsInvoices();
   const { customers } = useCustomersPage();
@@ -86,6 +89,16 @@ export default function BookingsPage() {
     debouncedSearch,
     statusFilter,
   ]);
+
+  /** Notifications: `/dashboard/bookings?openBooking=<id>` opens that booking drawer. */
+  useEffect(() => {
+    const raw = searchParams.get('openBooking')?.trim();
+    if (!raw) return;
+    const booking = bookings.find((b) => b.id === raw && b.agencyId === currentAgency.id);
+    if (!booking) return;
+    setSelectedBookingId(raw);
+    router.replace('/dashboard/bookings', { scroll: false });
+  }, [searchParams, bookings, currentAgency.id, router]);
 
   const selectedBooking = useMemo(() => {
     if (!selectedBookingId) return null;

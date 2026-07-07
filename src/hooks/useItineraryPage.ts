@@ -336,7 +336,7 @@ export function useItineraryPage() {
   );
 
   const hydrateItineraryDetail = useCallback(async (itineraryId: string) => {
-    if (!itineraryId || hydratedItineraryIdsRef.current.has(itineraryId)) return;
+    if (!itineraryId) return;
     const current = itinerariesRef.current.find((i) => i.id === itineraryId);
     if (current && (current.days?.length ?? 0) > 0) {
       hydratedItineraryIdsRef.current.add(itineraryId);

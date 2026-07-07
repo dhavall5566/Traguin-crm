@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { useVendorsPage } from '@/hooks/useVendorsPage';
 import { useClientPagination } from '@/hooks/useClientPagination';
@@ -25,6 +26,8 @@ import {
 import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 
 export default function VendorsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const currentAgency = useStore((state) => state.currentAgency);
   const {
     vendors,
@@ -73,6 +76,16 @@ export default function VendorsPage() {
   }, [vendors, currentAgency.id, debouncedSearch]);
 
   const vendorsPagination = useClientPagination(agencyVendors, undefined, [debouncedSearch]);
+
+  /** Notifications: `/dashboard/vendors?openVendor=<id>` selects that vendor. */
+  useEffect(() => {
+    const raw = searchParams.get('openVendor')?.trim();
+    if (!raw) return;
+    const vendor = vendors.find((v) => v.id === raw && v.agencyId === currentAgency.id);
+    if (!vendor) return;
+    setSelectedVendorId(raw);
+    router.replace('/dashboard/vendors', { scroll: false });
+  }, [searchParams, vendors, currentAgency.id, router]);
 
   React.useEffect(() => {
     if (loading) return;

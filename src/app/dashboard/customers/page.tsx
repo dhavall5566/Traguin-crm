@@ -1,8 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, Customer } from '@/lib/store';
 import { useCustomersPage } from '@/hooks/useCustomersPage';
+import { useBookingsInvoices } from '@/hooks/useBookingsInvoices';
+import { useItineraryPage } from '@/hooks/useItineraryPage';
 import { useClientPagination } from '@/hooks/useClientPagination';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { CrmTablePagination } from '@/components/ui/CrmTablePagination';
@@ -14,6 +17,10 @@ import { defaultCountryCode } from '@/data/country-codes';
 import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
 import { isEmailConflictError } from '@/lib/api/customers';
 import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
+import {
+  buildCustomerTravelEntries,
+  CustomerInlineDetailCard,
+} from '@/components/crm/CustomerInlineDetailCard';
 import { 
   Users,
   Plus,
@@ -28,6 +35,8 @@ import {
 } from 'lucide-react';
 
 export default function CustomersPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentAgency } = useStore();
   const {
     customers,
@@ -39,11 +48,14 @@ export default function CustomersPage() {
     uploadCustomerDoc,
     deleteCustomer,
   } = useCustomersPage();
+  const { bookings, invoices } = useBookingsInvoices();
+  const { itineraries } = useItineraryPage();
 
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
   const [customerSegment, setCustomerSegment] = useState<'direct' | 'b2b'>('direct');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [formError, setFormError] = useState<string | null>(null);
@@ -82,6 +94,16 @@ export default function CustomersPage() {
     if (fresh) setSelectedCustomer(fresh);
     else setSelectedCustomer(null);
   }, [customers, selectedCustomer?.id]);
+
+  /** Notifications: `/dashboard/customers?openCustomer=<id>` selects that profile. */
+  useEffect(() => {
+    const raw = searchParams.get('openCustomer')?.trim();
+    if (!raw) return;
+    const customer = customers.find((c) => c.id === raw && c.agencyId === currentAgency.id);
+    if (!customer) return;
+    setSelectedCustomer(customer);
+    router.replace('/dashboard/customers', { scroll: false });
+  }, [searchParams, customers, currentAgency.id, router]);
 
   const resetForm = () => {
     setFirstName('');
@@ -202,6 +224,10 @@ export default function CustomersPage() {
     return new Date(expiryDate).getTime() < new Date().getTime();
   };
 
+  const toggleCustomerDetailCard = (customerId: string) => {
+    setExpandedCustomerId((prev) => (prev === customerId ? null : customerId));
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -307,10 +333,17 @@ export default function CustomersPage() {
                 ) : (
                 customersPagination.pageItems.map((cust) => {
                   const expired = isPassportExpired(cust.passportExpiry);
-                  
+                  const isExpanded = expandedCustomerId === cust.id;
+                  const travelEntries = buildCustomerTravelEntries(
+                    cust,
+                    bookings,
+                    itineraries,
+                    invoices,
+                  );
+
                   return (
+                    <React.Fragment key={cust.id}>
                     <tr 
-                      key={cust.id} 
                       onClick={() => setSelectedCustomer(cust)}
                       className={`cursor-pointer ${selectedCustomer?.id === cust.id ? 'crm-data-table__row--selected' : ''}`}
                     >
@@ -319,7 +352,17 @@ export default function CustomersPage() {
                         <div className="w-7 h-7 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                           {cust.firstName.charAt(0)}{cust.lastName.charAt(0)}
                         </div>
-                        <span>{cust.firstName} {cust.lastName}</span>
+                        <button
+                          type="button"
+                          className="crm-customer-name-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCustomerDetailCard(cust.id);
+                          }}
+                          aria-expanded={isExpanded}
+                        >
+                          {cust.firstName} {cust.lastName}
+                        </button>
                         </div>
                       </td>
                       <td className="text-muted-foreground">{cust.email}</td>
@@ -353,6 +396,19 @@ export default function CustomersPage() {
                         </button>
                       </td>
                     </tr>
+                    {isExpanded ? (
+                      <tr className="crm-data-table__detail-row">
+                        <td colSpan={6}>
+                          <CustomerInlineDetailCard
+                            customer={cust}
+                            travelEntries={travelEntries}
+                            passportExpired={expired}
+                            onClose={() => setExpandedCustomerId(null)}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </React.Fragment>
                   );
                 })
                 )}

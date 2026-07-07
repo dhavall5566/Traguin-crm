@@ -30,6 +30,7 @@ export function mapAuditLogFromApi(
     userName: userNameById[api.user_id] ?? "Team member",
     action: api.action,
     entityType: api.entity_type,
+    entityId: api.entity_id ?? undefined,
     details: api.details ?? "",
     createdAt: api.created_at,
   };

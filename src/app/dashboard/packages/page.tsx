@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Package, Search, Globe, Lock, X, MapPin, Clock, IndianRupee } from 'lucide-react';
+import { Search, Globe, Lock, X, MapPin, Clock, IndianRupee } from 'lucide-react';
 import {
   EMPTY_PACKAGE_CATALOG_FILTERS,
   usePackagesCatalog,
@@ -228,7 +228,7 @@ export default function PackagesPage() {
             </button>
           </div>
         ) : loading ? (
-          <CrmTableSkeleton rows={8} columns={6} />
+          <CrmTableSkeleton rows={8} columns={7} />
         ) : items.length === 0 ? (
           <p className="crm-table-empty">No packages match your filters.</p>
         ) : (
@@ -237,24 +237,26 @@ export default function PackagesPage() {
               <table className="crm-data-table min-w-[720px]">
                 <thead>
                   <tr>
-                    <th>Package</th>
+                    <th>Sr No.</th>
+                    <th>Serial code</th>
                     <th>Destination</th>
+                    <th>Package</th>
                     <th>Duration</th>
                     <th>Price</th>
                     <th>Visibility</th>
-                    <th>Serial code</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {items.map((item, index) => (
                     <tr key={item.id}>
+                      <td className="text-muted-foreground">{offset + index + 1}</td>
+                      <td className="font-mono text-xs text-muted-foreground">{item.serialCode ?? '—'}</td>
+                      <td>{item.destinationName}</td>
                       <td>
                         <div className="crm-packages-table__title">
-                          <Package className="h-4 w-4 text-[var(--gold)]" aria-hidden />
                           <span>{item.title}</span>
                         </div>
                       </td>
-                      <td>{item.destinationName}</td>
                       <td>{item.durationLabel}</td>
                       <td>₹{item.price.toLocaleString('en-IN')}</td>
                       <td>
@@ -270,7 +272,6 @@ export default function PackagesPage() {
                           </span>
                         )}
                       </td>
-                      <td className="font-mono text-xs text-muted-foreground">{item.serialCode ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>

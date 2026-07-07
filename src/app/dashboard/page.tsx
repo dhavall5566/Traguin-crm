@@ -19,6 +19,7 @@ import {
   Award,
 } from 'lucide-react';
 import { CrmChartTooltip } from '@/components/charts/CrmChartTooltip';
+import { AuditLogListItem } from '@/components/crm/AuditLogListItem';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -353,31 +354,7 @@ export default function DashboardPage() {
           <div className="crm-panel__body crm-audit-list">
             {auditLogs.length > 0 ? (
               auditLogs.slice(0, 5).map((log) => (
-                <div key={log.id} className="crm-audit-item">
-                  <div className="crm-audit-item__copy">
-                    <div className="crm-audit-item__row">
-                      <span className="crm-audit-item__user">{log.userName}</span>
-                      <span
-                        className={`crm-badge ${
-                          log.action === 'CREATE'
-                            ? 'crm-badge--create'
-                            : log.action === 'UPDATE'
-                              ? 'crm-badge--update'
-                              : 'crm-badge--delete'
-                        }`}
-                      >
-                        {log.action}
-                      </span>
-                    </div>
-                    <p className="crm-audit-item__detail">{log.details}</p>
-                  </div>
-                  <span className="crm-audit-item__time">
-                    {new Date(log.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
+                <AuditLogListItem key={log.id} log={log} timeFormat="short" />
               ))
             ) : (
               <div className="crm-data-table__empty">No audit trails logged.</div>

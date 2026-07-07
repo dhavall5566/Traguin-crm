@@ -7,6 +7,8 @@ import { useItineraryPage } from '@/hooks/useItineraryPage';
 import { useBookingsInvoices } from '@/hooks/useBookingsInvoices';
 import { getLead, mergeLeadExtras } from '@/lib/api/leads';
 import { computeItineraryTotalPrice, newLocalId } from '@/lib/api/itineraries';
+import { invalidateCrmListCache } from '@/lib/api/crm-list-cache';
+import { CRM_CACHE } from '@/lib/api/crm-workspace-store';
 import {
   CrmItineraryCreationIntent,
   STORAGE_CRM_RESUME_BOOKING,
@@ -201,30 +203,49 @@ export default function ItineraryPage() {
     setCrmItineraryIntent(null);
   }, []);
 
-  const persistCrmProposalToLead = useCallback((newItineraryId: string) => {
-    let intent = crmItineraryIntentRef.current;
-    if (!intent?.leadId) intent = readCrmItineraryCreationIntentFromStorage();
-    if (!intent?.leadId) return false;
+  const persistCrmProposalToLead = useCallback(
+    (
+      newItineraryId: string,
+      resumeMeta?: { title?: string; totalPrice?: number },
+    ) => {
+      let intent = crmItineraryIntentRef.current;
+      if (!intent?.leadId) intent = readCrmItineraryCreationIntentFromStorage();
+      if (!intent?.leadId) return false;
 
-    mergeLeadExtras(intent.leadId, { proposalItineraryId: newItineraryId });
+      mergeLeadExtras(intent.leadId, { proposalItineraryId: newItineraryId });
 
-    try {
-      sessionStorage.setItem(
-        STORAGE_CRM_RESUME_BOOKING,
-        JSON.stringify({
-          leadId: intent.leadId,
-          itineraryId: newItineraryId,
-        }),
-      );
-    } catch {
-      /* resume marker optional — proposal already on lead extras */
-    }
-    return true;
-  }, []);
+      try {
+        sessionStorage.setItem(
+          STORAGE_CRM_RESUME_BOOKING,
+          JSON.stringify({
+            leadId: intent.leadId,
+            itineraryId: newItineraryId,
+            itineraryTitle: resumeMeta?.title?.trim() || undefined,
+            itineraryTotalPrice:
+              resumeMeta?.totalPrice != null && Number.isFinite(resumeMeta.totalPrice)
+                ? resumeMeta.totalPrice
+                : undefined,
+          }),
+        );
+      } catch {
+        /* resume marker optional — proposal already on lead extras */
+      }
+      return true;
+    },
+    [],
+  );
 
-  const finishItineraryForCrmIfNeeded = useCallback(
-    (newItineraryId: string) => {
-      if (!persistCrmProposalToLead(newItineraryId)) return false;
+  const assignItineraryToCrmLead = useCallback(
+    (itinerary: Pick<Itinerary, 'id' | 'title' | 'totalPrice'>) => {
+      if (
+        !persistCrmProposalToLead(itinerary.id, {
+          title: itinerary.title,
+          totalPrice: Number(itinerary.totalPrice),
+        })
+      ) {
+        return false;
+      }
+      invalidateCrmListCache(CRM_CACHE.itineraries);
       clearCrmItineraryCreationIntentFromStorage();
       crmItineraryIntentRef.current = null;
       setCrmItineraryIntent(null);
@@ -365,8 +386,6 @@ export default function ItineraryPage() {
       setNewStartDate('');
       setNewEndDate('');
       setShowAddItinModal(false);
-
-      persistCrmProposalToLead(newItinId);
 
       setSelectedItinId(newItinId);
       crmToastSuccess('Itinerary created');
@@ -647,8 +666,6 @@ export default function ItineraryPage() {
       };
       updateItinerary(itineraryId, { days: builtDays });
 
-      persistCrmProposalToLead(itineraryId);
-
       await saveItinerary(itineraryId, snapshot);
 
       setSelectedItinId(itineraryId);
@@ -725,17 +742,16 @@ export default function ItineraryPage() {
           <p className="min-w-0 flex-1">
             {activeItinerary ? (
               <>
-                Lead link active — edit this trip below (day titles, day overview,{' '}
-                <span className="font-semibold text-sky-50">Add activity</span>). When satisfied,{' '}
-                <span className="font-semibold text-sky-50">Return to CRM lead</span> attaches it — or{' '}
-                <span className="font-semibold text-sky-50">End lead link</span> to drop the CRM context.
+                Lead link active — edit this trip below. When you are ready, click{' '}
+                <span className="font-semibold text-sky-50">Assign</span> to attach it to the lead and return to CRM, or{' '}
+                <span className="font-semibold text-sky-50">End lead link</span> to leave without assigning.
               </>
             ) : (
               <>
                 Started from CRM — use{' '}
                 <span className="font-semibold text-sky-50">New Itinerary</span> or{' '}
-                <span className="font-semibold text-sky-50">AI Generate</span> to create a trip, then{' '}
-                <span className="font-semibold text-sky-50">Return to CRM lead</span> to attach it.{' '}
+                <span className="font-semibold text-sky-50">AI Generate</span> to create a trip, then click{' '}
+                <span className="font-semibold text-sky-50">Assign</span> when you want to attach it to the lead.{' '}
               </>
             )}
             {crmItineraryIntent.customerId
@@ -753,10 +769,10 @@ export default function ItineraryPage() {
             {activeItinerary ? (
               <button
                 type="button"
-                onClick={() => finishItineraryForCrmIfNeeded(activeItinerary.id)}
+                onClick={() => assignItineraryToCrmLead(activeItinerary)}
                 className="rounded-lg bg-sky-500 px-3 py-2 text-[11px] font-bold text-sky-950 hover:bg-sky-400"
               >
-                Return to CRM lead
+                Assign
               </button>
             ) : null}
           </div>

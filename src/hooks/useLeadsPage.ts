@@ -300,7 +300,7 @@ export function useLeadsPage() {
       leadMutationLockRef.current.add(lockKey);
       try {
         const { customerId, ...createInput } = input;
-        const apiLead = await createLead(
+        const { lead: apiLead, merged } = await createLead(
           { ...createInput, customerId: customerId || undefined },
           {
             initialActivity: {
@@ -315,7 +315,7 @@ export function useLeadsPage() {
         if (apiLead.customer_id) {
           await upsertCustomerInWorkspace(apiLead.customer_id);
         }
-        return apiLead;
+        return { lead: apiLead, merged };
       } finally {
         leadMutationLockRef.current.delete(lockKey);
       }

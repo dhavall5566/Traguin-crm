@@ -23,10 +23,17 @@ import {
   LeadTimelineNoteBody,
 } from '@/components/crm/LeadTimelineContent';
 import { LeadIntakeDetailsPanel } from '@/components/crm/LeadIntakeDetailsPanel';
+import { LeadIntakeAlerts } from '@/components/crm/LeadIntakeAlerts';
+import { checkLeadIntake, type LeadIntakeCheckResult } from '@/lib/api/leads';
 import { findLeadIntakeNote } from '@/lib/lead-intake-display';
 import { LeadTimelineAnimatedItem } from '@/components/crm/LeadTimelineAnimatedItem';
 import { LeadDetailsForm } from '@/components/crm/LeadDetailsForm';
 import { useCmsPackageSummary, usePackagesForDestination } from '@/hooks/usePackagesCatalog';
+import {
+  createItineraryFromCmsPackage,
+  getItinerary,
+  mapItineraryFromApi,
+} from '@/lib/api/itineraries';
 import { sortTimelineItems, isRedundantNoteActivity, dedupeAccidentalNotes, isPendingTimelineItem } from '@/lib/lead-timeline-format';
 import { formatLeadDisplayCode, leadCodeLegendHint, buildActiveLegendEntries } from '@/lib/lead-codes';
 import { LeadIdLegend } from '@/components/crm/LeadIdLegend';
@@ -40,6 +47,7 @@ import {
   CrmItineraryCreationIntent,
   STORAGE_CREATE_ITIN_FROM_CRM,
   STORAGE_CRM_RESUME_BOOKING,
+  readCrmBookingResumeFromStorage,
 } from '@/lib/crmItineraryHandoff';
 import {
   Plus,
@@ -56,11 +64,27 @@ import {
   Check,
 } from 'lucide-react';
 
-type LeadDetailDraft = Pick<Lead, 'status' | 'value' | 'assignedToId' | 'cmsPackageId'> & {
+type LeadDetailDraft = Pick<
+  Lead,
+  'status' | 'value' | 'assignedToId' | 'cmsPackageId' | 'priority' | 'leadCategory'
+> & {
   source: string;
   message: string;
   details: LeadDetailsFields;
 };
+
+const LEAD_PRIORITY_OPTIONS: { value: Lead['priority']; label: string }[] = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+];
+
+const LEAD_CATEGORY_OPTIONS: { value: Lead['leadCategory']; label: string }[] = [
+  { value: 'DOMESTIC', label: 'Domestic' },
+  { value: 'INTERNATIONAL', label: 'International' },
+  { value: 'CORPORATE', label: 'Corporate' },
+  { value: 'VISA_ONLY', label: 'Visa Only' },
+];
 
 const stages = [
   { id: 'NEW', name: 'New Leads', color: 'border-t-indigo-500 bg-indigo-500/5' },
@@ -146,7 +170,7 @@ export default function CRMPage() {
   } = useLeadsPage();
 
   const { customers } = useCustomersPage();
-  const { itineraries } = useItineraryPage();
+  const { itineraries, hydrateItineraryDetail } = useItineraryPage();
   const { bookings, invoices, refresh: refreshBookingsInvoices } = useBookingsInvoices();
 
   const { currentAgency, currentUser, workspacePreferences } = useStore();
@@ -157,6 +181,11 @@ export default function CRMPage() {
   const creatingLeadRef = useRef(false);
   const [creatingBooking, setCreatingBooking] = useState(false);
   const creatingBookingRef = useRef(false);
+  const [resumeItineraryPreview, setResumeItineraryPreview] = useState<{
+    id: string;
+    title: string;
+    totalPrice: number;
+  } | null>(null);
 
   const runLeadAction = async (
     label: string,
@@ -233,6 +262,8 @@ export default function CRMPage() {
   const leadDetailHydratedForIdRef = useRef<string | null>(null);
   /** Last server status for open drawer — used to sync draft after list/tile status changes */
   const leadDetailServerStatusRef = useRef<string | null>(null);
+  /** Last server assignee for open drawer — syncs when assignment is rejected remotely */
+  const leadDetailServerAssignRef = useRef<string | undefined>(undefined);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const [timelineEnterKeys, setTimelineEnterKeys] = useState<Set<string>>(() => new Set());
   const [timelineEnterTick, setTimelineEnterTick] = useState(0);
@@ -280,11 +311,14 @@ export default function CRMPage() {
     if (leadDetailHydratedForIdRef.current !== selectedLeadId) {
       leadDetailHydratedForIdRef.current = selectedLeadId;
       leadDetailServerStatusRef.current = snap.status;
+      leadDetailServerAssignRef.current = snap.assignedToId;
       setLeadDetailDraft({
         status: snap.status,
         value: snap.value,
         assignedToId: snap.assignedToId,
         cmsPackageId: snap.cmsPackageId,
+        priority: snap.priority,
+        leadCategory: snap.leadCategory,
         source: snap.source ?? '',
         message: snap.message ?? '',
         details: pickLeadDetails(snap),
@@ -293,13 +327,30 @@ export default function CRMPage() {
     }
 
     const prevServerStatus = leadDetailServerStatusRef.current;
-    if (prevServerStatus !== null && prevServerStatus !== snap.status) {
+    const prevServerAssign = leadDetailServerAssignRef.current;
+    const nextServerAssign = snap.assignedToId;
+
+    if (
+      (prevServerStatus !== null && prevServerStatus !== snap.status) ||
+      prevServerAssign !== nextServerAssign
+    ) {
       setLeadDetailDraft((prev) => {
-        if (prev == null || prev.status !== prevServerStatus) return prev;
-        return { ...prev, status: snap.status };
+        if (prev == null) return prev;
+        let next = prev;
+        if (prevServerStatus !== null && prevServerStatus !== snap.status && prev.status === prevServerStatus) {
+          next = { ...next, status: snap.status };
+        }
+        const draftAssign = prev.assignedToId ?? undefined;
+        const trackedAssign = prevServerAssign ?? undefined;
+        const serverAssign = nextServerAssign ?? undefined;
+        if (draftAssign === trackedAssign && draftAssign !== serverAssign) {
+          next = { ...next, assignedToId: nextServerAssign };
+        }
+        return next;
       });
     }
     leadDetailServerStatusRef.current = snap.status;
+    leadDetailServerAssignRef.current = nextServerAssign;
   }, [selectedLeadId, leads, currentAgency.id]);
 
   /** Display + save payload — only trust draft after it is hydrated for this lead id */
@@ -315,6 +366,8 @@ export default function CRMPage() {
       value: selectedLead.value,
       assignedToId: selectedLead.assignedToId,
       cmsPackageId: selectedLead.cmsPackageId,
+      priority: selectedLead.priority,
+      leadCategory: selectedLead.leadCategory,
       source: selectedLead.source ?? '',
       message: selectedLead.message ?? '',
       details: pickLeadDetails(selectedLead),
@@ -323,8 +376,13 @@ export default function CRMPage() {
 
   const destinationPackages = usePackagesForDestination(pipelineDraft?.details.travelDestination);
   const { summary: selectedProposalPackage } = useCmsPackageSummary(pipelineDraft?.cmsPackageId);
+  const leadPackageMode =
+    pipelineDraft?.details.packageMode ??
+    (pipelineDraft?.cmsPackageId ? 'PRE_BUILT' : bookingItineraryId ? 'CUSTOM' : undefined);
+  const showPrebuiltPackagePicker = leadPackageMode !== 'CUSTOM';
+  const showTripPlannerPicker = leadPackageMode !== 'PRE_BUILT';
 
-  /** Deal estimate shown in drawer: itinerary retail total when a proposal is picked, otherwise stored lead.value */
+  /** Deal estimate shown in drawer: itinerary total, CMS package price, or stored lead.value */
   const drawerResolvedDealValue = useMemo(() => {
     if (!pipelineDraft) return 0;
     if (bookingItineraryId) {
@@ -333,8 +391,18 @@ export default function CRMPage() {
       );
       if (itin) return Number(itin.totalPrice);
     }
+    if (leadPackageMode === 'PRE_BUILT' && selectedProposalPackage) {
+      return Number(selectedProposalPackage.price);
+    }
     return Number(pipelineDraft.value);
-  }, [pipelineDraft, bookingItineraryId, itineraries, currentAgency.id]);
+  }, [
+    pipelineDraft,
+    bookingItineraryId,
+    itineraries,
+    currentAgency.id,
+    leadPackageMode,
+    selectedProposalPackage,
+  ]);
 
   const leadDetailDirty = useMemo(() => {
     if (!selectedLead || !pipelineDraft) return false;
@@ -342,6 +410,8 @@ export default function CRMPage() {
       pipelineDraft.status !== selectedLead.status ||
       drawerResolvedDealValue !== Number(selectedLead.value) ||
       (pipelineDraft.assignedToId || '') !== (selectedLead.assignedToId || '') ||
+      (pipelineDraft.priority || '') !== (selectedLead.priority || '') ||
+      (pipelineDraft.leadCategory || '') !== (selectedLead.leadCategory || '') ||
       (pipelineDraft.message || '') !== (selectedLead.message || '') ||
       (pipelineDraft.cmsPackageId || '') !== (selectedLead.cmsPackageId || '') ||
       !leadDetailsEqual(pipelineDraft.details, pickLeadDetails(selectedLead))
@@ -443,6 +513,8 @@ export default function CRMPage() {
           value: selectedLead.value,
           assignedToId: selectedLead.assignedToId,
           cmsPackageId: selectedLead.cmsPackageId,
+          priority: selectedLead.priority,
+          leadCategory: selectedLead.leadCategory,
           source: selectedLead.source ?? '',
           message: selectedLead.message ?? '',
           details: pickLeadDetails(selectedLead),
@@ -471,6 +543,12 @@ export default function CRMPage() {
         const nextAssign = pipelineDraft.assignedToId || undefined;
         const curAssign = selectedLead.assignedToId ?? undefined;
         if (nextAssign !== curAssign) updates.assignedToId = nextAssign;
+        const nextPriority = pipelineDraft.priority || undefined;
+        const curPriority = selectedLead.priority ?? undefined;
+        if (nextPriority !== curPriority) updates.priority = nextPriority;
+        const nextCategory = pipelineDraft.leadCategory || undefined;
+        const curCategory = selectedLead.leadCategory ?? undefined;
+        if (nextCategory !== curCategory) updates.leadCategory = nextCategory;
         if ((pipelineDraft.message || '') !== (selectedLead.message || '')) {
           updates.message = pipelineDraft.message.trim() || undefined;
         }
@@ -497,6 +575,8 @@ export default function CRMPage() {
           value: drawerResolvedDealValue,
           assignedToId: pipelineDraft.assignedToId,
           cmsPackageId: pipelineDraft.cmsPackageId,
+          priority: pipelineDraft.priority,
+          leadCategory: pipelineDraft.leadCategory,
           source: pipelineDraft.source ?? '',
           message: pipelineDraft.message ?? '',
           details: pickLeadDetails(pipelineDraft.details),
@@ -532,6 +612,14 @@ export default function CRMPage() {
   const [leadEntryMode, setLeadEntryMode] = useState<'new' | 'existing'>('new');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [addIntakeCheck, setAddIntakeCheck] = useState<LeadIntakeCheckResult | null>(null);
+  const [addIntakeCheckLoading, setAddIntakeCheckLoading] = useState(false);
+  const [drawerIntakeCheck, setDrawerIntakeCheck] = useState<LeadIntakeCheckResult | null>(null);
+  const debouncedNewEmail = useDebouncedValue(newEmail, 400);
+  const debouncedNewPhone = useDebouncedValue(
+    formatFullPhone(newPhoneCountryCode, newPhone),
+    400,
+  );
 
   const agencyCustomers = useMemo(
     () => customers.filter((c) => c.agencyId === currentAgency.id),
@@ -589,7 +677,73 @@ export default function CRMPage() {
     setLeadEntryMode('new');
     setSelectedCustomerId('');
     setCustomerSearch('');
+    setAddIntakeCheck(null);
+    setAddIntakeCheckLoading(false);
   };
+
+  useEffect(() => {
+    if (!showAddModal) {
+      setAddIntakeCheck(null);
+      setAddIntakeCheckLoading(false);
+      return;
+    }
+    const email = debouncedNewEmail.trim();
+    const phone = debouncedNewPhone.trim();
+    if (!email && !phone) {
+      setAddIntakeCheck(null);
+      setAddIntakeCheckLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAddIntakeCheckLoading(true);
+    void checkLeadIntake({ email: email || undefined, phone: phone || undefined })
+      .then((result) => {
+        if (!cancelled) setAddIntakeCheck(result);
+      })
+      .catch(() => {
+        if (!cancelled) setAddIntakeCheck(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAddIntakeCheckLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showAddModal, debouncedNewEmail, debouncedNewPhone]);
+
+  useEffect(() => {
+    if (!selectedLead) {
+      setDrawerIntakeCheck(null);
+      return;
+    }
+    const email = selectedLead.email?.trim();
+    const phone = selectedLead.phone?.trim();
+    if (!email && !phone) {
+      setDrawerIntakeCheck(null);
+      return;
+    }
+
+    let cancelled = false;
+    void checkLeadIntake({ email, phone, excludeLeadId: selectedLead.id })
+      .then((result) => {
+        if (!cancelled) setDrawerIntakeCheck(result);
+      })
+      .catch(() => {
+        if (!cancelled) setDrawerIntakeCheck(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLead?.id, selectedLead?.email, selectedLead?.phone]);
+
+  useEffect(() => {
+    if (!showAddModal || leadEntryMode !== 'new') return;
+    tryMatchCustomerByPhone(debouncedNewPhone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- match when debounced phone settles
+  }, [showAddModal, leadEntryMode, debouncedNewPhone]);
 
   const openAddLeadModal = () => {
     resetLeadForm();
@@ -638,6 +792,20 @@ export default function CRMPage() {
     const match = agencyCustomers.find(
       (c) => c.email.toLowerCase() === email.trim().toLowerCase()
     );
+    if (match) {
+      setLeadEntryMode('existing');
+      applyCustomerToForm(match.id);
+    }
+  };
+
+  const tryMatchCustomerByPhone = (phone: string) => {
+    if (leadEntryMode !== 'new' || !phone.trim()) return;
+    const digits = phone.replace(/\D/g, '').slice(-10);
+    if (digits.length < 10) return;
+    const match = agencyCustomers.find((c) => {
+      const customerDigits = (c.phone ?? '').replace(/\D/g, '').slice(-10);
+      return customerDigits.length >= 10 && customerDigits === digits;
+    });
     if (match) {
       setLeadEntryMode('existing');
       applyCustomerToForm(match.id);
@@ -735,10 +903,32 @@ export default function CRMPage() {
   const proposalSelectGhostItin = useMemo(() => {
     if (!bookingItineraryId) return undefined;
     if (bookableItineraries.some((i) => i.id === bookingItineraryId)) return undefined;
-    return itineraries.find(
+    const found = itineraries.find(
       (i) => i.id === bookingItineraryId && i.agencyId === currentAgency.id,
     );
-  }, [bookingItineraryId, bookableItineraries, itineraries, currentAgency.id]);
+    if (found) return found;
+    if (resumeItineraryPreview?.id === bookingItineraryId) {
+      return {
+        id: resumeItineraryPreview.id,
+        agencyId: currentAgency.id,
+        title: resumeItineraryPreview.title,
+        totalPrice: resumeItineraryPreview.totalPrice,
+        description: '',
+        status: 'DRAFT' as const,
+        markupMargin: 0,
+        taxRate: 0,
+        isTemplate: false,
+        days: [],
+      };
+    }
+    return undefined;
+  }, [
+    bookingItineraryId,
+    bookableItineraries,
+    itineraries,
+    currentAgency.id,
+    resumeItineraryPreview,
+  ]);
 
   const emailMatchedCustomer = useMemo(() => {
     const em = selectedLead?.email?.trim();
@@ -785,44 +975,97 @@ export default function CRMPage() {
     );
   }, [selectedLead, effectiveCustomerId, bookings, invoices, currentAgency.id]);
 
-  /** Enables “Create booking…” only when an itinerary is chosen — customer is validated on click */
-  const crmChosenProposalItineraryId = useMemo(
-    () => (bookingItineraryId || selectedLead?.proposalItineraryId || '').trim(),
-    [bookingItineraryId, selectedLead?.proposalItineraryId],
-  );
+  /** What the convert card will use: pre-built CMS package vs custom trip planner itinerary. */
+  const crmBookingSource = useMemo(() => {
+    const cmsPackageId = (pipelineDraft?.cmsPackageId || '').trim();
+    const customItineraryId = (bookingItineraryId || '').trim();
+    const persistedItineraryId =
+      leadPackageMode === 'PRE_BUILT'
+        ? ''
+        : (selectedLead?.proposalItineraryId || '').trim();
+    const itineraryId = customItineraryId || persistedItineraryId;
+
+    if (leadPackageMode === 'PRE_BUILT') {
+      return { kind: 'prebuilt' as const, cmsPackageId, itineraryId: '' };
+    }
+    if (leadPackageMode === 'CUSTOM') {
+      return { kind: 'custom' as const, cmsPackageId: '', itineraryId };
+    }
+    if (cmsPackageId) {
+      return { kind: 'prebuilt' as const, cmsPackageId, itineraryId: '' };
+    }
+    return { kind: 'custom' as const, cmsPackageId: '', itineraryId };
+  }, [
+    leadPackageMode,
+    pipelineDraft?.cmsPackageId,
+    bookingItineraryId,
+    selectedLead?.proposalItineraryId,
+  ]);
+
+  const crmCanConvertToBooking = useMemo(() => {
+    if (crmBookingSource.kind === 'prebuilt') {
+      return Boolean(crmBookingSource.cmsPackageId);
+    }
+    return Boolean(crmBookingSource.itineraryId);
+  }, [crmBookingSource]);
 
   useLayoutEffect(() => {
     /* Re-run whenever we land on this route so itinerary → CRM client navigations pick up STORAGE
        even if this page stayed warm in memory (empty deps misses that). */
     if (pathname !== '/dashboard/crm') return;
     if (typeof window === 'undefined') return;
-    try {
-      const raw = sessionStorage.getItem(STORAGE_CRM_RESUME_BOOKING);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { leadId?: string; itineraryId?: string };
-      const lid = typeof parsed.leadId === 'string' ? parsed.leadId.trim() : '';
-      const iid = typeof parsed.itineraryId === 'string' ? parsed.itineraryId.trim() : '';
-      if (!lid || !iid) return;
+    const resume = readCrmBookingResumeFromStorage();
+    if (!resume) return;
 
-      /** Auto-persist proposal when resuming so the dropdown aligns with stored `proposalItineraryId`. */
-      const resumeLeadSnap = leads.find(
-        (l) => l.id === lid && l.agencyId === currentAgency.id,
-      );
-      if (
-        resumeLeadSnap &&
-        ((resumeLeadSnap.proposalItineraryId ?? '').trim() || '') !== iid
-      ) {
-        updateLeadExtras(lid, { proposalItineraryId: iid });
-      }
+    const { leadId: lid, itineraryId: iid, itineraryTitle, itineraryTotalPrice } = resume;
 
-      pendingBookingResumePickRef.current = { leadId: lid, itineraryId: iid };
-      applyingCrmBookingResumeRef.current = true;
-      setSelectedLeadId(lid);
-      setBookingItineraryId(iid);
-    } catch {
-      /* ignore malformed storage */
+    /** Open the lead drawer after explicit Assign from Trip planner. */
+    const resumeLeadSnap = leads.find(
+      (l) => l.id === lid && l.agencyId === currentAgency.id,
+    );
+    if (
+      resumeLeadSnap &&
+      ((resumeLeadSnap.proposalItineraryId ?? '').trim() || '') !== iid
+    ) {
+      updateLeadExtras(lid, { proposalItineraryId: iid });
     }
-  }, [pathname, leads, currentAgency.id, updateLeadExtras]);
+
+    if (itineraryTitle) {
+      setResumeItineraryPreview({
+        id: iid,
+        title: itineraryTitle,
+        totalPrice:
+          itineraryTotalPrice != null && Number.isFinite(itineraryTotalPrice)
+            ? itineraryTotalPrice
+            : 0,
+      });
+    }
+
+    pendingBookingResumePickRef.current = { leadId: lid, itineraryId: iid };
+    applyingCrmBookingResumeRef.current = true;
+    setSelectedLeadId(lid);
+    setBookingItineraryId(iid);
+    void hydrateItineraryDetail(iid);
+  }, [pathname, leads, currentAgency.id, updateLeadExtras, hydrateItineraryDetail]);
+
+  useEffect(() => {
+    if (!bookingItineraryId) {
+      setResumeItineraryPreview(null);
+      return;
+    }
+    void hydrateItineraryDetail(bookingItineraryId);
+  }, [bookingItineraryId, hydrateItineraryDetail]);
+
+  useEffect(() => {
+    if (!bookingItineraryId) return;
+    const hydrated = itineraries.find(
+      (i) =>
+        i.id === bookingItineraryId &&
+        i.agencyId === currentAgency.id &&
+        (i.days?.length ?? 0) > 0,
+    );
+    if (hydrated) setResumeItineraryPreview(null);
+  }, [bookingItineraryId, itineraries, currentAgency.id]);
 
   /**
    * Drop CRM resume markers only after itinerary + drawer id match what is in storage, so React
@@ -925,35 +1168,11 @@ export default function CRMPage() {
     /** Directory profile is independent of conversion — bookings can exist before a traveller card exists */
     const cid = (effectiveCustomerId || '').trim();
 
-    const itineraryId = (
-      bookingItineraryId ||
-      selectedLead?.proposalItineraryId ||
-      ''
-    ).trim();
-    if (!itineraryId) {
-      crmToastInfo('Pick an itinerary to attach to this booking.');
-      return;
-    }
-
-    const duplicate = bookings.some(
-      (b) =>
-        b.agencyId === currentAgency.id &&
-        b.customerId === cid &&
-        b.itineraryId === itineraryId,
-    );
-    if (duplicate) {
+    if (!crmCanConvertToBooking) {
       crmToastInfo(
-        'A booking already exists for this itinerary. Open Billing & ERP Finance for invoice details.',
-      );
-      return;
-    }
-
-    const itinerary = itineraries.find(
-      (i) => i.id === itineraryId && i.agencyId === currentAgency.id,
-    );
-    if (!itinerary) {
-      crmToastInfo(
-        'Itinerary not found for this workspace. Pick a trip from the list or open Trip planner.',
+        crmBookingSource.kind === 'prebuilt'
+          ? 'Pick a pre-built package to convert to a booking.'
+          : 'Pick an itinerary to attach to this booking.',
       );
       return;
     }
@@ -968,6 +1187,48 @@ export default function CRMPage() {
 
     void runLeadAction('Create booking', async () => {
       try {
+        let itineraryId = '';
+        let itineraryTitle = '';
+        let itineraryAmount = 0;
+
+        if (crmBookingSource.kind === 'prebuilt') {
+          const apiItinerary = await createItineraryFromCmsPackage({
+            cmsPackageId: crmBookingSource.cmsPackageId,
+            customerId: cid,
+          });
+          itineraryId = apiItinerary.id;
+          itineraryTitle = apiItinerary.title;
+          itineraryAmount = Number(apiItinerary.total_price) || 0;
+          updateLeadExtras(selectedLead.id, { proposalItineraryId: itineraryId });
+        } else {
+          itineraryId = crmBookingSource.itineraryId;
+          const cached = itineraries.find(
+            (i) => i.id === itineraryId && i.agencyId === currentAgency.id,
+          );
+          if (cached) {
+            itineraryTitle = cached.title;
+            itineraryAmount = Number(cached.totalPrice) || 0;
+          } else {
+            const apiItinerary = await getItinerary(itineraryId);
+            const mapped = mapItineraryFromApi(apiItinerary);
+            itineraryTitle = mapped.title;
+            itineraryAmount = Number(mapped.totalPrice) || 0;
+          }
+        }
+
+        const duplicate = bookings.some(
+          (b) =>
+            b.agencyId === currentAgency.id &&
+            b.customerId === cid &&
+            b.itineraryId === itineraryId,
+        );
+        if (duplicate) {
+          crmToastInfo(
+            'A booking already exists for this itinerary. Open Billing & ERP Finance for invoice details.',
+          );
+          return;
+        }
+
         if (cid && cid !== (selectedLead.customerId || '').trim()) {
           await updateLead(selectedLead.id, { customerId: cid });
         }
@@ -993,7 +1254,7 @@ export default function CRMPage() {
           const apiInvoice = await createInvoice({
             bookingId: newBooking.id,
             invoiceNumber,
-            amount: Number(itinerary.totalPrice) || 0,
+            amount: itineraryAmount,
             dueDate,
             status: 'UNPAID',
           });
@@ -1010,7 +1271,7 @@ export default function CRMPage() {
         await updateLeadStatus(selectedLead.id, 'CONFIRMED');
         const { promise: bookingNotePromise } = addLeadNote(
           selectedLead.id,
-          `Converted to booking on "${itinerary.title}". Draft invoice${invNo ? ` ${invNo}` : ''} — ₹${invAmt.toLocaleString('en-IN')}${!draftedInvoice ? ' (see Billing)' : ''}. Record payments in Billing & ERP Finance.`,
+          `Converted to booking on "${itineraryTitle}". Draft invoice${invNo ? ` ${invNo}` : ''} — ₹${invAmt.toLocaleString('en-IN')}${!draftedInvoice ? ' (see Billing)' : ''}. Record payments in Billing & ERP Finance.`,
           currentUser?.name ?? 'System',
         );
         await bookingNotePromise;
@@ -1040,7 +1301,7 @@ export default function CRMPage() {
     void runLeadAction('Create lead', async () => {
       setCreatingLead(true);
       try {
-        const created = await addLead({
+        const result = await addLead({
           title: newTitle,
           firstName: newFirstName,
           lastName: newLastName,
@@ -1053,15 +1314,19 @@ export default function CRMPage() {
           customerId: selectedCustomerId || undefined,
           message: newMessage.trim() || undefined,
         });
-        if (!created) return;
+        if (!result) return;
 
         resetLeadForm();
         setShowAddModal(false);
+        if (result.merged) {
+          crmToastInfo('Inquiry merged into existing lead (duplicate phone or email detected).');
+          setSelectedLeadId(result.lead.id);
+        }
       } finally {
         creatingLeadRef.current = false;
         setCreatingLead(false);
       }
-    }, 'Lead created');
+    }, 'Lead saved');
   };
 
   const handleAddNote = (e: React.FormEvent) => {
@@ -1861,6 +2126,20 @@ export default function CRMPage() {
                 </div>
               </div>
 
+              <LeadIntakeAlerts
+                check={addIntakeCheck}
+                loading={addIntakeCheckLoading}
+                onOpenLead={(leadId) => {
+                  setShowAddModal(false);
+                  resetLeadForm();
+                  setSelectedLeadId(leadId);
+                }}
+                onUseCustomer={(customerId) => {
+                  setLeadEntryMode('existing');
+                  applyCustomerToForm(customerId);
+                }}
+              />
+
               <div className="pt-2 flex justify-end space-x-2">
                 <button
                   type="button"
@@ -1918,6 +2197,17 @@ export default function CRMPage() {
                 <X className="h-4 w-4" />
               </button>
             </header>
+
+            {(drawerIntakeCheck?.existing_customer ||
+              (drawerIntakeCheck?.duplicate_leads.length ?? 0) > 0) && (
+              <div className="crm-lead-drawer__section px-5 pt-0">
+                <LeadIntakeAlerts
+                  check={drawerIntakeCheck}
+                  compact
+                  onOpenLead={(leadId) => setSelectedLeadId(leadId)}
+                />
+              </div>
+            )}
 
             <div className="crm-lead-drawer__body">
               <div className="crm-lead-drawer__main">
@@ -2013,15 +2303,69 @@ export default function CRMPage() {
                         title={
                           bookingItineraryId
                             ? 'Total from selected proposal itinerary'
-                            : 'Attach an itinerary to sync total'
+                            : leadPackageMode === 'PRE_BUILT' && pipelineDraft.cmsPackageId
+                              ? 'Total from selected CMS package'
+                              : 'Attach an itinerary to sync total'
                         }
                         className="crm-lead-drawer__input"
                       />
                       <p className="crm-lead-drawer__hint">
                         {bookingItineraryId
                           ? 'Synced from itinerary total.'
-                          : 'Select an itinerary below to populate.'}
+                          : leadPackageMode === 'PRE_BUILT' && pipelineDraft.cmsPackageId
+                            ? 'Synced from package price.'
+                            : 'Select a package or itinerary below to populate.'}
                       </p>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={`lead-priority-${selectedLead.id}`}
+                        className="crm-lead-drawer__field-label"
+                      >
+                        Priority
+                      </label>
+                      <select
+                        id={`lead-priority-${selectedLead.id}`}
+                        value={pipelineDraft.priority || ''}
+                        onChange={(e) =>
+                          setDrawerPipeline({
+                            priority: (e.target.value || undefined) as Lead['priority'],
+                          })
+                        }
+                        className="crm-lead-drawer__select"
+                      >
+                        <option value="">Not set</option>
+                        {LEAD_PRIORITY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor={`lead-category-${selectedLead.id}`}
+                        className="crm-lead-drawer__field-label"
+                      >
+                        Lead category
+                      </label>
+                      <select
+                        id={`lead-category-${selectedLead.id}`}
+                        value={pipelineDraft.leadCategory || ''}
+                        onChange={(e) =>
+                          setDrawerPipeline({
+                            leadCategory: (e.target.value || undefined) as Lead['leadCategory'],
+                          })
+                        }
+                        className="crm-lead-drawer__select"
+                      >
+                        <option value="">Not set</option>
+                        {LEAD_CATEGORY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="crm-lead-drawer__field-label" htmlFor={`lead-assign-${selectedLead.id}`}>
@@ -2111,11 +2455,18 @@ export default function CRMPage() {
                 <LeadDetailsForm
                   leadId={selectedLead.id}
                   value={pipelineDraft.details}
-                  onChange={(patch) =>
-                    setDrawerPipeline({
-                      details: { ...pipelineDraft.details, ...patch },
-                    })
-                  }
+                  onChange={(patch) => {
+                    const nextDetails = { ...pipelineDraft.details, ...patch };
+                    const drawerPatch: Partial<LeadDetailDraft> = { details: nextDetails };
+                    if (patch.packageMode === 'CUSTOM') {
+                      drawerPatch.cmsPackageId = undefined;
+                    }
+                    setDrawerPipeline(drawerPatch);
+                    if (patch.packageMode === 'PRE_BUILT') {
+                      pendingBookingResumePickRef.current = null;
+                      setBookingItineraryId('');
+                    }
+                  }}
                 />
 
                 <section className="crm-lead-drawer__section crm-lead-drawer__booking">
@@ -2123,110 +2474,150 @@ export default function CRMPage() {
                     <ClipboardList className="h-4 w-4 text-[var(--gold)]" aria-hidden />
                     Convert to booking &amp; invoice
                   </h3>
-                  <label className="crm-lead-drawer__field-label" htmlFor={`lead-package-${selectedLead.id}`}>
-                    Proposal / package ({destinationPackages.packages.length})
-                  </label>
-                  <select
-                    id={`lead-package-${selectedLead.id}`}
-                    value={pipelineDraft.cmsPackageId ?? ''}
-                    onChange={(e) => setDrawerPipeline({ cmsPackageId: e.target.value || undefined })}
-                    className="crm-lead-drawer__select"
-                    disabled={!destinationPackages.hasDestination && !pipelineDraft.cmsPackageId}
-                  >
-                    <option value="">
-                      {destinationPackages.hasDestination
-                        ? 'Choose package…'
-                        : 'Enter destination in Details first…'}
-                    </option>
-                    {pipelineDraft.cmsPackageId &&
-                    !destinationPackages.packages.some((p) => p.id === pipelineDraft.cmsPackageId) ? (
-                      <option value={pipelineDraft.cmsPackageId}>
-                        {selectedProposalPackage
-                          ? `${selectedProposalPackage.title} · ${selectedProposalPackage.durationLabel} · ₹${selectedProposalPackage.price.toLocaleString('en-IN')}`
-                          : 'Linked package…'}
-                      </option>
-                    ) : null}
-                    {destinationPackages.packages.map((pkg) => (
-                      <option key={pkg.id} value={pkg.id}>
-                        {pkg.title} · {pkg.durationLabel} · ₹{pkg.price.toLocaleString('en-IN')}
-                        {pkg.destinationName ? ` · ${pkg.destinationName}` : ''}
-                        {!pkg.isPublished ? ' · Internal' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {destinationPackages.loading ? (
-                    <p className="crm-lead-drawer__hint">Loading packages for “{destinationPackages.destinationQuery}”…</p>
+                  {showPrebuiltPackagePicker ? (
+                    <>
+                      <label className="crm-lead-drawer__field-label" htmlFor={`lead-package-${selectedLead.id}`}>
+                        Proposal / package ({destinationPackages.packages.length})
+                      </label>
+                      <select
+                        id={`lead-package-${selectedLead.id}`}
+                        value={pipelineDraft.cmsPackageId ?? ''}
+                        onChange={(e) => {
+                          const nextPackageId = e.target.value || undefined;
+                          setDrawerPipeline({
+                            cmsPackageId: nextPackageId,
+                            ...(nextPackageId
+                              ? {
+                                  details: {
+                                    ...pipelineDraft.details,
+                                    packageMode: 'PRE_BUILT',
+                                  },
+                                }
+                              : {}),
+                          });
+                          if (nextPackageId) {
+                            pendingBookingResumePickRef.current = null;
+                            setBookingItineraryId('');
+                            updateLeadExtras(selectedLead.id, { proposalItineraryId: undefined });
+                          }
+                        }}
+                        className="crm-lead-drawer__select"
+                        disabled={!destinationPackages.hasDestination && !pipelineDraft.cmsPackageId}
+                      >
+                        <option value="">
+                          {destinationPackages.hasDestination
+                            ? 'Choose package…'
+                            : 'Enter destination in Details first…'}
+                        </option>
+                        {pipelineDraft.cmsPackageId &&
+                        !destinationPackages.packages.some((p) => p.id === pipelineDraft.cmsPackageId) ? (
+                          <option value={pipelineDraft.cmsPackageId}>
+                            {selectedProposalPackage
+                              ? `${selectedProposalPackage.title} · ${selectedProposalPackage.durationLabel} · ₹${selectedProposalPackage.price.toLocaleString('en-IN')}`
+                              : 'Linked package…'}
+                          </option>
+                        ) : null}
+                        {destinationPackages.packages.map((pkg) => (
+                          <option key={pkg.id} value={pkg.id}>
+                            {pkg.title} · {pkg.durationLabel} · ₹{pkg.price.toLocaleString('en-IN')}
+                            {pkg.destinationName ? ` · ${pkg.destinationName}` : ''}
+                            {!pkg.isPublished ? ' · Internal' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {destinationPackages.loading ? (
+                        <p className="crm-lead-drawer__hint">Loading packages for “{destinationPackages.destinationQuery}”…</p>
+                      ) : null}
+                      {!destinationPackages.loading && destinationPackages.hasDestination && destinationPackages.packages.length === 0 ? (
+                        <p className="crm-lead-drawer__hint">
+                          No CMS packages match “{destinationPackages.destinationQuery}”. Try the exact destination name or check the Packages catalog.
+                        </p>
+                      ) : null}
+                      {!destinationPackages.hasDestination ? (
+                        <p className="crm-lead-drawer__hint">
+                          Set Destination in Details above — this list shows all CMS packages for that place.
+                        </p>
+                      ) : null}
+                    </>
                   ) : null}
-                  {!destinationPackages.loading && destinationPackages.hasDestination && destinationPackages.packages.length === 0 ? (
-                    <p className="crm-lead-drawer__hint">
-                      No CMS packages match “{destinationPackages.destinationQuery}”. Try the exact destination name or check the Packages catalog.
-                    </p>
+                  {showTripPlannerPicker ? (
+                    <>
+                      <label
+                        className={`crm-lead-drawer__field-label${showPrebuiltPackagePicker ? ' mt-3' : ''}`}
+                        htmlFor={`lead-itin-${selectedLead.id}`}
+                      >
+                        Trip planner itinerary ({bookableItineraries.length})
+                      </label>
+                      <select
+                        id={`lead-itin-${selectedLead.id}`}
+                        value={bookingItineraryId}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === '__create_itinerary__') {
+                            try {
+                              const payload: CrmItineraryCreationIntent = {
+                                leadId: selectedLead.id,
+                                customerId: '',
+                                leadGoalTitle: (selectedLead.title ?? '').trim(),
+                                leadMessage: (selectedLead.message ?? '').trim(),
+                              };
+                              sessionStorage.setItem(STORAGE_CREATE_ITIN_FROM_CRM, JSON.stringify(payload));
+                            } catch {
+                              /* ignore */
+                            }
+                            router.push('/dashboard/itinerary');
+                            return;
+                          }
+                          pendingBookingResumePickRef.current = null;
+                          setBookingItineraryId(v);
+                          if (v) {
+                            setDrawerPipeline({
+                              cmsPackageId: undefined,
+                              details: {
+                                ...pipelineDraft.details,
+                                packageMode: 'CUSTOM',
+                              },
+                            });
+                          }
+                        }}
+                        className="crm-lead-drawer__select"
+                      >
+                        <option value="">Choose itinerary…</option>
+                        <option value="__create_itinerary__">+ Create new itinerary…</option>
+                        {bookingItineraryId &&
+                        !bookableItineraries.some((i) => i.id === bookingItineraryId) ? (
+                          <option value={bookingItineraryId}>
+                            {proposalSelectGhostItin
+                              ? `${proposalSelectGhostItin.title} · ₹${Number(proposalSelectGhostItin.totalPrice).toLocaleString('en-IN')}`
+                              : 'Trip from Trip planner…'}
+                          </option>
+                        ) : null}
+                        {bookableItineraries.map((itin) => (
+                          <option key={itin.id} value={itin.id}>
+                            {itin.title} · ₹{Number(itin.totalPrice).toLocaleString('en-IN')}
+                            {itin.startDate ? ` · ${itin.startDate}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {bookableItineraries.length === 0 && !bookingItineraryId ? (
+                        <p className="crm-lead-drawer__hint">Add days to a trip on the Trip planner page to convert to a booking.</p>
+                      ) : null}
+                    </>
                   ) : null}
-                  {!destinationPackages.hasDestination ? (
-                    <p className="crm-lead-drawer__hint">
-                      Set Destination in Details above — this list shows all CMS packages for that place.
-                    </p>
-                  ) : null}
-                  <label className="crm-lead-drawer__field-label mt-3" htmlFor={`lead-itin-${selectedLead.id}`}>
-                    Trip planner itinerary ({bookableItineraries.length})
-                  </label>
-                  <select
-                    id={`lead-itin-${selectedLead.id}`}
-                    value={bookingItineraryId}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === '__create_itinerary__') {
-                        try {
-                          const payload: CrmItineraryCreationIntent = {
-                            leadId: selectedLead.id,
-                            customerId: '',
-                            leadGoalTitle: (selectedLead.title ?? '').trim(),
-                            leadMessage: (selectedLead.message ?? '').trim(),
-                          };
-                          sessionStorage.setItem(STORAGE_CREATE_ITIN_FROM_CRM, JSON.stringify(payload));
-                        } catch {
-                          /* ignore */
-                        }
-                        router.push('/dashboard/itinerary');
-                        return;
-                      }
-                      pendingBookingResumePickRef.current = null;
-                      setBookingItineraryId(v);
-                    }}
-                    className="crm-lead-drawer__select"
-                  >
-                    <option value="">Choose itinerary…</option>
-                    <option value="__create_itinerary__">+ Create new itinerary…</option>
-                    {bookingItineraryId &&
-                    !bookableItineraries.some((i) => i.id === bookingItineraryId) ? (
-                      <option value={bookingItineraryId}>
-                        {proposalSelectGhostItin
-                          ? `${proposalSelectGhostItin.title} · ₹${Number(proposalSelectGhostItin.totalPrice).toLocaleString('en-IN')}`
-                          : 'Trip from Trip planner…'}
-                      </option>
-                    ) : null}
-                    {bookableItineraries.map((itin) => (
-                      <option key={itin.id} value={itin.id}>
-                        {itin.title} · ₹{Number(itin.totalPrice).toLocaleString('en-IN')}
-                        {itin.startDate ? ` · ${itin.startDate}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {bookableItineraries.length === 0 && (
-                    <p className="crm-lead-drawer__hint">Add days to a trip on the Trip planner page to convert to a booking.</p>
-                  )}
                   <button
                     type="button"
                     disabled={
-                      !crmChosenProposalItineraryId ||
+                      !crmCanConvertToBooking ||
                       hasOutstandingInvoiceForLeadTraveller ||
                       creatingBooking
                     }
                     title={
                       creatingBooking
                         ? 'Creating booking and invoice…'
-                        : !crmChosenProposalItineraryId
-                          ? 'Choose a proposal itinerary first'
+                        : !crmCanConvertToBooking
+                          ? crmBookingSource.kind === 'prebuilt'
+                            ? 'Choose a pre-built package first'
+                            : 'Choose a proposal itinerary first'
                           : hasOutstandingInvoiceForLeadTraveller
                             ? 'Settle outstanding invoice before creating another booking'
                             : 'Create booking and draft invoice'

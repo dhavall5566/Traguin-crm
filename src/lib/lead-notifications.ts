@@ -29,9 +29,20 @@ export function formatLeadNotificationMessage(event: ApiLeadRecentEvent): string
   const source = event.source?.trim();
 
   if (event.kind === 'new') {
+    if (event.existing_customer) {
+      return source
+        ? `New lead ${code} — returning customer ${name} via ${source}`
+        : `New lead ${code} — returning customer ${name}`;
+    }
     return source
       ? `New lead ${code} — ${name} via ${source}`
       : `New lead ${code} — ${name}`;
+  }
+
+  if (event.merged_duplicate) {
+    return source
+      ? `Duplicate inquiry merged into ${code} — ${name} (${source})`
+      : `Duplicate inquiry merged into ${code} — ${name}`;
   }
 
   return source
