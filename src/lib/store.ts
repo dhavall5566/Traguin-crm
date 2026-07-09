@@ -16,7 +16,9 @@ import {
   type RbacCrudSet,
 } from '@/lib/rbac';
 import type { LeadDetailsFields } from '@/lib/lead-details';
+import type { LeadPriority } from '@/lib/lead-priority';
 
+export type { LeadPriority } from '@/lib/lead-priority';
 export type { RoleDefinition, RbacModuleKey, RbacCrudSet } from '@/lib/rbac';
 
 /** Stable unique ids even when multiple entities are created in the same millisecond. */
@@ -48,7 +50,7 @@ export interface User {
   role: string; // Admin, Sales, Operations, Finance, Vendor, Customer
 }
 
-export type LeadPriority = 'LOW' | 'MEDIUM' | 'HIGH';
+
 export type LeadCategory = 'DOMESTIC' | 'INTERNATIONAL' | 'CORPORATE' | 'VISA_ONLY';
 
 export interface Lead extends LeadDetailsFields {

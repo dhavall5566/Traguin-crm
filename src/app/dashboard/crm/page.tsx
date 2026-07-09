@@ -73,12 +73,11 @@ type LeadDetailDraft = Pick<
   details: LeadDetailsFields;
 };
 
-const LEAD_PRIORITY_OPTIONS: { value: Lead['priority']; label: string }[] = [
-  { value: 'LOW', label: 'Low' },
-  { value: 'MEDIUM', label: 'Medium' },
-  { value: 'HIGH', label: 'High' },
-];
-
+import {
+  LEAD_PRIORITY_OPTIONS,
+  normalizeLeadPriority,
+  type LeadPriority,
+} from '@/lib/lead-priority';
 const LEAD_CATEGORY_OPTIONS: { value: Lead['leadCategory']; label: string }[] = [
   { value: 'DOMESTIC', label: 'Domestic' },
   { value: 'INTERNATIONAL', label: 'International' },
@@ -2269,7 +2268,7 @@ export default function CRMPage() {
                         htmlFor={`lead-pipeline-status-${selectedLead.id}`}
                         className="crm-lead-drawer__field-label"
                       >
-                        Lead status
+                        Pipeline stage
                       </label>
                       <select
                         key={selectedLead.id}
@@ -2322,7 +2321,7 @@ export default function CRMPage() {
                         htmlFor={`lead-priority-${selectedLead.id}`}
                         className="crm-lead-drawer__field-label"
                       >
-                        Priority
+                        Lead status
                       </label>
                       <select
                         id={`lead-priority-${selectedLead.id}`}

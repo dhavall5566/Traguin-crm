@@ -5,6 +5,7 @@ import {
   pickLeadDetails,
   type LeadDetailsFields,
 } from "@/lib/lead-details";
+import { normalizeLeadPriority } from "@/lib/lead-priority";
 import type { Lead, LeadActivity, LeadFollowup, LeadNote } from "@/lib/store";
 
 /** API snake_case shapes (CRM backend). */
@@ -276,7 +277,7 @@ export function mapLeadFromApi(
     assignedToId: lead.assigned_to_id ?? undefined,
     assignmentStatus: (lead.assignment_status as Lead['assignmentStatus']) ?? undefined,
     assignedById: lead.assigned_by_id ?? undefined,
-    priority: (lead.priority as Lead["priority"]) ?? undefined,
+    priority: normalizeLeadPriority(lead.priority),
     leadCategory: (lead.lead_category as Lead["leadCategory"]) ?? undefined,
     createdAt: lead.created_at,
     updatedAt: lead.updated_at,
