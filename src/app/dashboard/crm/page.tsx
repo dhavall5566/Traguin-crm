@@ -73,11 +73,7 @@ type LeadDetailDraft = Pick<
   details: LeadDetailsFields;
 };
 
-import {
-  LEAD_PRIORITY_OPTIONS,
-  normalizeLeadPriority,
-  type LeadPriority,
-} from '@/lib/lead-priority';
+import { LEAD_PRIORITY_OPTIONS } from '@/lib/lead-priority';
 const LEAD_CATEGORY_OPTIONS: { value: Lead['leadCategory']; label: string }[] = [
   { value: 'DOMESTIC', label: 'Domestic' },
   { value: 'INTERNATIONAL', label: 'International' },
