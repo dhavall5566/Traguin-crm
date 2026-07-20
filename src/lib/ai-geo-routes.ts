@@ -273,7 +273,7 @@ export function getDestinationGeoRoute(destinationKey: string, hub: string): Des
     .split(/&|,/)
     .map((part) => part.trim())
     .filter(Boolean);
-  const fallbackCity = parts[0] ?? hub.trim() || 'Destination';
+  const fallbackCity = (parts[0] ?? hub.trim()) || 'Destination';
   const chain: GeoRouteStop[] =
     parts.length > 1
       ? parts.map((city, index) => ({

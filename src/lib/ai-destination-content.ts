@@ -580,7 +580,7 @@ export function getArrivalCopy(hub: string) {
   const key = normalizeDestinationKey(hub);
   const profile = PROFILES[key];
   const area =
-    profile?.baseArea.split(/&|,/)[0]?.trim() ?? hub.trim() || 'destination';
+    (profile?.baseArea.split(/&|,/)[0]?.trim() ?? hub.trim()) || 'destination';
 
   if (!profile) {
     return {
@@ -775,7 +775,7 @@ function resolveExploreCity(
   if (parts.length > 1) {
     return parts[Math.max(0, (day - 2) % parts.length)];
   }
-  return parts[0] ?? hub.trim() || 'Destination';
+  return (parts[0] ?? hub.trim()) || 'Destination';
 }
 
 /** City + signature landmark title for a trip day. */
