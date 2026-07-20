@@ -531,7 +531,7 @@ export function ensureUniquePlaces(
   tracker: PlaceUsageTracker,
   minCount = 1,
 ): string {
-  let deduped = tracker.dedupe(places);
+  const deduped = tracker.dedupe(places);
   const shortfall = minCount - splitPlacesList(deduped).length;
   if (shortfall <= 0) return deduped;
 

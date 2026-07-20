@@ -55,7 +55,6 @@ import { LEAD_PRIORITY_OPTIONS } from '@/lib/lead-priority';
 import {
   LEAD_PIPELINE_STAGES,
   effectivePipelineStage,
-  resolvePipelineStage,
   type LeadPipelineStatus,
 } from '@/lib/lead-pipeline';
 import {

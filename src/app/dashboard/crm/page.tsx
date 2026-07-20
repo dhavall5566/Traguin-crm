@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { useLeadsPage } from '@/hooks/useLeadsPage';
 import { useCustomersPage } from '@/hooks/useCustomersPage';
@@ -72,7 +72,6 @@ function leadCreatedWithinPeriod(createdAt: string, period: StatsPeriod): boolea
 }
 
 export default function CRMPage() {
-  const router = useRouter();
   const navigateToLead = useNavigateToLeadDetail();
   const pathname = usePathname();
   const searchParams = useSearchParams();
