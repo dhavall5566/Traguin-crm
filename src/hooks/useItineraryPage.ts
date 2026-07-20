@@ -20,16 +20,18 @@ import {
 import type { Customer, Itinerary, ItineraryDay, ItineraryItem } from "@/lib/store";
 
 function withRecalculatedTotal(itin: Itinerary): Itinerary {
-  return {
-    ...itin,
-    totalPrice: computeItineraryTotalPrice(itin),
-  };
+  const computed = computeItineraryTotalPrice(itin);
+  if (computed > 0) {
+    return { ...itin, totalPrice: computed };
+  }
+  return itin;
 }
 
-export function useItineraryPage() {
+export function useItineraryPage(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const cachedItineraries = getCrmWorkspaceList<Itinerary>(CRM_CACHE.itineraries);
   const cachedCustomers = getCrmWorkspaceList<Customer>(CRM_CACHE.customers);
-  const hasWarmCache = cachedItineraries || cachedCustomers;
+  const hasWarmCache = Boolean(cachedItineraries || cachedCustomers);
 
   const [itineraries, setItineraries] = useState<Itinerary[]>(
     () => cachedItineraries?.items ?? [],
@@ -41,6 +43,7 @@ export function useItineraryPage() {
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const itinerariesRef = useRef(itineraries);
   const hydratedItineraryIdsRef = useRef<Set<string>>(new Set());
+  const catalogLoadedRef = useRef(false);
   itinerariesRef.current = itineraries;
 
   const markDirty = useCallback((id: string) => {
@@ -67,6 +70,7 @@ export function useItineraryPage() {
         next[idx] = {
           ...record,
           proposalTheme: record.proposalTheme ?? prev[idx].proposalTheme,
+          discountRate: record.discountRate ?? prev[idx].discountRate ?? 0,
         };
         return next;
       });
@@ -76,12 +80,23 @@ export function useItineraryPage() {
   );
 
   useEffect(() => {
+    if (!enabled) {
+      catalogLoadedRef.current = false;
+      return;
+    }
+    if (catalogLoadedRef.current) return;
+    catalogLoadedRef.current = true;
+
     let cancelled = false;
     const controller = new AbortController();
     let pendingBackground = 0;
+    const warmCache = Boolean(
+      getCrmWorkspaceList(CRM_CACHE.itineraries) ||
+        getCrmWorkspaceList(CRM_CACHE.customers),
+    );
 
     (async () => {
-      if (!hasWarmCache) setLoading(true);
+      if (!warmCache) setLoading(true);
       setBackgroundLoading(false);
       setError(null);
       try {
@@ -147,7 +162,7 @@ export function useItineraryPage() {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [enabled]);
 
   const mutateItinerary = useCallback(
     (itineraryId: string, mutator: (itin: Itinerary) => Itinerary) => {
@@ -182,6 +197,9 @@ export function useItineraryPage() {
         const next = { ...it, ...updates };
         if (updates.proposalTheme !== undefined) {
           mergeItineraryExtras(itineraryId, { proposalTheme: updates.proposalTheme });
+        }
+        if (updates.discountRate !== undefined) {
+          mergeItineraryExtras(itineraryId, { discountRate: updates.discountRate });
         }
         return next;
       });
@@ -335,15 +353,34 @@ export function useItineraryPage() {
     [mutateItinerary],
   );
 
-  const hydrateItineraryDetail = useCallback(async (itineraryId: string) => {
-    if (!itineraryId) return;
+  const hydrateItineraryDetail = useCallback(async (itineraryId: string): Promise<Itinerary | null> => {
+    if (!itineraryId) return null;
+
     const current = itinerariesRef.current.find((i) => i.id === itineraryId);
     if (current && (current.days?.length ?? 0) > 0) {
       hydratedItineraryIdsRef.current.add(itineraryId);
-      return;
+      return current;
     }
-    const apiItinerary = await getItinerary(itineraryId);
-    replaceItineraryInState(apiItinerary);
+
+    try {
+      const apiItinerary = await getItinerary(itineraryId);
+      return replaceItineraryInState(apiItinerary);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load itinerary";
+      const missing =
+        /not found/i.test(message) || message.includes("404") || message.includes("(404)");
+      if (!missing) throw err;
+
+      hydratedItineraryIdsRef.current.delete(itineraryId);
+      setItineraries((prev) => prev.filter((it) => it.id !== itineraryId));
+      setDirtyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(itineraryId);
+        return next;
+      });
+      setError("That itinerary is no longer available. It may have been deleted.");
+      return null;
+    }
   }, [replaceItineraryInState]);
 
   return {

@@ -6,7 +6,7 @@ export function getAuditNotificationHref(log: AuditLog): string | null {
 
   switch (log.entityType) {
     case 'Lead':
-      return entityId ? `/dashboard/crm?openLead=${encodeURIComponent(entityId)}` : null;
+      return entityId ? `/dashboard/crm/leads/${encodeURIComponent(entityId)}` : null;
     case 'Itinerary':
       return entityId ? `/dashboard/itinerary?openPlan=${encodeURIComponent(entityId)}` : null;
     case 'Customer':

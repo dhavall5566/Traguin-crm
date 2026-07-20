@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useCrmToast } from '@/components/ui/CrmToastProvider';
 import { invalidateCrmListCache } from '@/lib/api/crm-list-cache';
 import { CRM_CACHE } from '@/lib/api/crm-workspace-store';
@@ -13,6 +12,7 @@ import {
   pruneLocalLeadMutations,
 } from '@/lib/api/lead-local-mutations';
 import { pushLeadNotification } from '@/lib/lead-notifications';
+import { useNavigateToLeadDetail } from '@/hooks/useNavigateToLeadDetail';
 
 const POLL_MS = 4000;
 const BOOTSTRAP_DELAY_MS = 800;
@@ -28,16 +28,14 @@ function logPollError(error: unknown): void {
 /** Poll for inbound leads and surface 3D toasts while the CRM dashboard is open. */
 export function useLeadRealtimeNotifications(enabled: boolean) {
   const { showLeadToast } = useCrmToast();
-  const router = useRouter();
+  const navigateToLead = useNavigateToLeadDetail();
   const showLeadToastRef = useRef(showLeadToast);
-  const routerRef = useRef(router);
   const watermarkRef = useRef<string | null>(null);
   const bootstrappedRef = useRef(false);
   const seenEventKeysRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef(false);
 
   showLeadToastRef.current = showLeadToast;
-  routerRef.current = router;
 
   useEffect(() => {
     if (!enabled) {
@@ -86,7 +84,7 @@ export function useLeadRealtimeNotifications(enabled: boolean) {
               kind: event.kind,
               durationMs: event.kind === 'new' ? 5200 : 4600,
               onAction: () => {
-                routerRef.current.push(`/dashboard/crm?openLead=${event.id}`);
+                navigateToLead(event.id);
               },
             });
           }
@@ -118,5 +116,5 @@ export function useLeadRealtimeNotifications(enabled: boolean) {
       if (intervalId) clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [enabled]);
+  }, [enabled, navigateToLead]);
 }

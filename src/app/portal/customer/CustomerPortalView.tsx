@@ -97,7 +97,6 @@ export default function CustomerPortalView() {
               agencyName={agency?.name}
               agencyLogoUrl={agency?.logoUrl}
               clientName={clientName}
-              showPricing
             />
           ) : (
             <div className="text-center py-20 bg-zinc-900/40 border border-zinc-800 rounded-2xl text-zinc-400">

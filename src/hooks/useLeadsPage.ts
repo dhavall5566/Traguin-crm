@@ -186,13 +186,8 @@ export function useLeadsPage() {
       setError(null);
       try {
         const extras = loadLeadExtras();
-        const users = await listAgencyUsers();
-        if (cancelled) return;
-
-        setStaff(users);
+        const usersPromise = listAgencyUsers();
         hydratedLeadIdsRef.current.clear();
-        const names = userNameMap(users);
-        userNameByIdRef.current = names;
 
         await withTransientRetry(() =>
           loadProgressiveCrmList<
@@ -201,7 +196,7 @@ export function useLeadsPage() {
           >({
             cachePrefix: CRM_CACHE.leads,
             fetchPage: bindCrmListFetch(listLeads),
-            mapItem: (item) => applyLeadRecord(item, names, extras),
+            mapItem: (item) => applyLeadRecord(item, userNameByIdRef.current, extras),
             signal: controller.signal,
             onFirstPage: (firstItems, firstTotal) => {
               if (cancelled) return;
@@ -217,6 +212,12 @@ export function useLeadsPage() {
             },
           }),
         );
+
+        const users = await usersPromise;
+        if (cancelled) return;
+
+        setStaff(users);
+        userNameByIdRef.current = userNameMap(users);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load leads");
@@ -268,6 +269,9 @@ export function useLeadsPage() {
     try {
       const apiLead = await getLead(leadId);
       replaceLeadInState(apiLead);
+    } catch {
+      // Keep the page usable when the API is slow or temporarily unavailable.
+      // Leave the lead unmarked so a later navigation can retry hydration.
     } finally {
       setHydratingLeadId((current) => (current === leadId ? null : current));
     }
@@ -539,6 +543,7 @@ export function useLeadsPage() {
     error,
     refreshLeads,
     hydrateLeadDetail,
+    upsertLeadFromApi: replaceLeadInState,
     addLead,
     updateLeadStatus,
     updateLead,

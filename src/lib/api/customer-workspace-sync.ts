@@ -1,5 +1,4 @@
 import type { Customer } from "@/lib/store";
-import { invalidateCrmListCache } from "@/lib/api/crm-list-cache";
 import {
   CRM_CACHE,
   getCrmWorkspaceList,
@@ -30,7 +29,6 @@ export async function upsertCustomerInWorkspace(
   const apiCustomer = await getCustomer(id);
   const record = mapCustomerFromApi(apiCustomer);
   prependCrmWorkspaceItem(CRM_CACHE.customers, record);
-  invalidateCrmListCache(CRM_CACHE.customers);
   listeners.forEach((listener) => listener(record));
   return record;
 }

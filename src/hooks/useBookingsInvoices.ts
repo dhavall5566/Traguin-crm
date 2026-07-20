@@ -6,7 +6,8 @@ import { CRM_CACHE } from "@/lib/api/crm-workspace-store";
 import { bindCrmListFetch } from "@/lib/api/pagination";
 import { useProgressiveCrmList } from "@/hooks/useProgressiveCrmList";
 
-export function useBookingsInvoices() {
+export function useBookingsInvoices(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true;
   const {
     items: bookings,
     loading: bookingsLoading,
@@ -16,6 +17,7 @@ export function useBookingsInvoices() {
     cachePrefix: CRM_CACHE.bookings,
     fetchPage: bindCrmListFetch(listBookings),
     mapItem: mapBookingFromApi,
+    enabled,
   });
 
   const {
@@ -27,6 +29,7 @@ export function useBookingsInvoices() {
     cachePrefix: CRM_CACHE.invoices,
     fetchPage: bindCrmListFetch(listInvoices),
     mapItem: mapInvoiceFromApi,
+    enabled,
   });
 
   const loading = bookingsLoading || invoicesLoading;

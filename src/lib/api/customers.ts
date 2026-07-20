@@ -16,6 +16,7 @@ export type ApiCustomerRead = {
   last_name: string;
   email: string;
   phone: string | null;
+  customer_code: string | null;
   passport_number: string | null;
   passport_expiry: string | null;
   travel_history: unknown;
@@ -74,6 +75,7 @@ export function mapCustomerFromApi(api: ApiCustomerRead): Customer {
   return {
     id: api.id,
     agencyId: api.agency_id,
+    customerCode: api.customer_code ?? undefined,
     firstName: api.first_name,
     lastName: api.last_name,
     email: api.email,

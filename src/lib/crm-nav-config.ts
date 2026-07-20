@@ -13,6 +13,7 @@ import {
   Settings,
   Mail,
   Bell,
+  MessageCircle,
 } from "lucide-react";
 import { RBAC_NAV_MODULE, type RbacModuleKey } from "@/lib/rbac";
 
@@ -140,6 +141,12 @@ export const CRM_NAV_GROUPS: CrmNavGroup[] = [
             name: "Email configuration",
             href: "/dashboard/settings/email",
             icon: Bell,
+            rbacModule: "workspace_settings",
+          },
+          {
+            name: "WhatsApp templates",
+            href: "/dashboard/settings/whatsapp",
+            icon: MessageCircle,
             rbacModule: "workspace_settings",
           },
         ],

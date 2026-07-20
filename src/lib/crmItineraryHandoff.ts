@@ -47,6 +47,18 @@ export function readCrmBookingResumeFromStorage(): CrmBookingResumePayload | nul
   }
 }
 
+/** Read booking-resume payload once and remove it so list refreshes cannot re-open tabs. */
+export function consumeCrmBookingResumeFromStorage(): CrmBookingResumePayload | null {
+  const resume = readCrmBookingResumeFromStorage();
+  if (!resume) return null;
+  try {
+    sessionStorage.removeItem(STORAGE_CRM_RESUME_BOOKING);
+  } catch {
+    /* quota / blocked */
+  }
+  return resume;
+}
+
 /** Safe parse — used when React state/ref may reset (Strict Mode) but session keys must survive. */
 export function readCrmItineraryCreationIntentFromStorage(): CrmItineraryCreationIntent | null {
   if (typeof window === 'undefined') return null;

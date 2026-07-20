@@ -17,8 +17,10 @@ import {
 } from '@/lib/rbac';
 import type { LeadDetailsFields } from '@/lib/lead-details';
 import type { LeadPriority } from '@/lib/lead-priority';
+import type { LeadPipelineStatus } from '@/lib/lead-pipeline';
 
 export type { LeadPriority } from '@/lib/lead-priority';
+export type { LeadPipelineStatus } from '@/lib/lead-pipeline';
 export type { RoleDefinition, RbacModuleKey, RbacCrudSet } from '@/lib/rbac';
 
 /** Stable unique ids even when multiple entities are created in the same millisecond. */
@@ -55,7 +57,7 @@ export type LeadCategory = 'DOMESTIC' | 'INTERNATIONAL' | 'CORPORATE' | 'VISA_ON
 
 export interface Lead extends LeadDetailsFields {
   id: string;
-  /** Human-readable reference, e.g. TRG001-ITN */
+  /** Inquiry ID before booking, e.g. TEMP202607100001-FB (legacy TRG001-WA still shown). */
   leadCode?: string;
   agencyId: string;
   title: string;
@@ -63,7 +65,7 @@ export interface Lead extends LeadDetailsFields {
   lastName: string;
   email?: string;
   phone?: string;
-  status: 'NEW' | 'CONTACTED' | 'PROPOSAL_SENT' | 'NEGOTIATION' | 'CONFIRMED' | 'LOST';
+  status: LeadPipelineStatus;
   value: number;
   source?: string;
   assignedToId?: string;
@@ -115,6 +117,8 @@ export interface LeadFollowup {
 export interface Customer {
   id: string;
   agencyId: string;
+  /** Permanent ID after first booking, e.g. TG2026070001 */
+  customerCode?: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -154,6 +158,8 @@ export interface Itinerary {
   totalPrice: number;
   markupMargin: number; // percentage
   taxRate: number; // percentage
+  /** Admin-only % discount on items subtotal (stored in session extras until API field exists). */
+  discountRate?: number;
   isTemplate: boolean;
   days: ItineraryDay[];
   proposalTheme?: 'luxury' | 'classic' | 'emerald' | 'sunset';
@@ -1080,7 +1086,7 @@ export const useStore = create<CRMStore>((set, get) => ({
       id: uniqueEntityId('itin'),
       agencyId: get().currentAgency.id,
       days: itinData.days || [],
-      proposalTheme: itinData.proposalTheme || 'luxury',
+      proposalTheme: itinData.proposalTheme || 'classic',
     };
 
     set((state) => ({

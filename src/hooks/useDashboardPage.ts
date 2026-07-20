@@ -39,23 +39,13 @@ export type RevenueTrendPoint = {
   Expenses: number;
 };
 
-const STAGE_COLORS: Record<string, string> = {
-  NEW: "#6366f1",
-  CONTACTED: "#38bdf8",
-  PROPOSAL_SENT: "#f59e0b",
-  NEGOTIATION: "#ec4899",
-  CONFIRMED: "#10b981",
-  LOST: "#6b7280",
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  NEW: "New",
-  CONTACTED: "Contacted",
-  PROPOSAL_SENT: "Proposal Sent",
-  NEGOTIATION: "Negotiation",
-  CONFIRMED: "Confirmed",
-  LOST: "Lost",
-};
+import {
+  PIPELINE_STAGE_CHART_COLORS,
+  PIPELINE_STAGE_LABELS,
+  isWonPipelineStatus,
+  resolvePipelineStage,
+  type LeadPipelineStatus,
+} from "@/lib/lead-pipeline";
 
 function weeklyLeadGrowthPercent(leads: Lead[]): number {
   const now = Date.now();
@@ -249,15 +239,18 @@ export function useDashboardPage() {
     const processingBookings = bookings.filter((b) => b.status === "PROCESSING").length;
 
     const stageCounts = leads.reduce<Record<string, number>>((acc, lead) => {
-      acc[lead.status] = (acc[lead.status] || 0) + 1;
+      const stage = resolvePipelineStage(lead.status);
+      acc[stage] = (acc[stage] || 0) + 1;
       return acc;
     }, {});
 
-    const conversionData: ConversionSlice[] = Object.entries(STAGE_LABELS)
+    const conversionData: ConversionSlice[] = (
+      Object.entries(PIPELINE_STAGE_LABELS) as [LeadPipelineStatus, string][]
+    )
       .map(([status, name]) => ({
         name,
         value: stageCounts[status] || 0,
-        color: STAGE_COLORS[status],
+        color: PIPELINE_STAGE_CHART_COLORS[status],
       }))
       .filter((item) => item.value > 0);
 
@@ -266,7 +259,7 @@ export function useDashboardPage() {
     const agentPerformance: AgentPerformanceRow[] = users
       .map((agent) => {
         const assigned = leads.filter((l) => l.assignedToId === agent.id);
-        const confirmed = assigned.filter((l) => l.status === "CONFIRMED");
+        const confirmed = assigned.filter((l) => isWonPipelineStatus(l.status));
         const salesVolume = confirmed.reduce((sum, l) => sum + Number(l.value), 0);
         const rate = assigned.length > 0 ? Math.round((confirmed.length / assigned.length) * 100) : 0;
         return {

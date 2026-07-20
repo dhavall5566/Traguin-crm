@@ -20,7 +20,7 @@ export default function ProposalThemePicker({ value, onChange }: ProposalThemePi
           Client Presentation Theme
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {themes.map((theme) => {
           const selected = value === theme.id;
           return (
@@ -28,18 +28,20 @@ export default function ProposalThemePicker({ value, onChange }: ProposalThemePi
               key={theme.id}
               type="button"
               onClick={() => onChange(theme.id)}
-              className={`relative text-left p-2.5 rounded-xl border transition-all ${
+              className={`relative min-w-0 text-left rounded-lg border p-2 transition-all ${
                 selected
                   ? 'border-primary ring-2 ring-primary/30 bg-primary/5'
-                  : 'border-border hover:border-primary/40 bg-card'
+                  : 'border-border bg-card hover:border-primary/40'
               }`}
             >
-              <div className={`h-8 rounded-lg mb-2 ${theme.swatch}`} />
-              <p className="text-[10px] font-bold text-foreground">{theme.name}</p>
-              <p className="text-[9px] text-muted-foreground leading-snug">{theme.description}</p>
+              <div className={`mb-1.5 h-7 rounded-md ${theme.swatch}`} />
+              <p className="truncate text-[10px] font-bold text-foreground">{theme.name}</p>
+              <p className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-muted-foreground">
+                {theme.description}
+              </p>
               {selected && (
-                <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5" />
+                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <Check className="h-2.5 w-2.5" />
                 </span>
               )}
             </button>

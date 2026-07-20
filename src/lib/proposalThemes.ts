@@ -124,12 +124,10 @@ export const PROPOSAL_THEMES: Record<ProposalThemeId, ProposalTheme> = {
   },
 };
 
-export const DEFAULT_PROPOSAL_THEME: ProposalThemeId = 'luxury';
+export const DEFAULT_PROPOSAL_THEME: ProposalThemeId = 'classic';
 
 export function resolveProposalTheme(theme?: string): ProposalThemeId {
-  if (theme && theme in PROPOSAL_THEMES) {
-    return theme as ProposalThemeId;
-  }
+  void theme;
   return DEFAULT_PROPOSAL_THEME;
 }
 

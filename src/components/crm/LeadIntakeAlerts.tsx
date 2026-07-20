@@ -20,7 +20,7 @@ export function LeadIntakeAlerts({
 }: LeadIntakeAlertsProps) {
   if (loading) {
     return (
-      <div className="rounded-lg border border-border/60 bg-secondary/15 px-3 py-2 text-[10px] text-muted-foreground">
+      <div className="crm-intake-alert crm-intake-alert--loading">
         Checking for existing customers and duplicate leads…
       </div>
     );
@@ -36,13 +36,11 @@ export function LeadIntakeAlerts({
   if (!hasAlerts) return null;
 
   return (
-    <div className={`space-y-2 ${compact ? '' : 'rounded-lg border border-amber-500/30 bg-amber-500/5 p-3'}`}>
+    <div className={`crm-intake-alert ${compact ? 'crm-intake-alert--compact' : ''}`}>
       {check.existing_customer ? (
-        <div className="text-[10px] leading-relaxed text-amber-900 dark:text-amber-100">
-          <p className="font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-            Existing customer
-          </p>
-          <p>
+        <div className="crm-intake-alert__block">
+          <p className="crm-intake-alert__title">Existing customer</p>
+          <p className="crm-intake-alert__body">
             {check.existing_customer.first_name} {check.existing_customer.last_name}
             {' · '}
             {check.existing_customer.email}
@@ -51,7 +49,7 @@ export function LeadIntakeAlerts({
           {onUseCustomer ? (
             <button
               type="button"
-              className="mt-1 font-semibold text-primary underline-offset-2 hover:underline"
+              className="crm-intake-alert__action"
               onClick={() => onUseCustomer(check.existing_customer!.id)}
             >
               Use this customer profile
@@ -61,11 +59,9 @@ export function LeadIntakeAlerts({
       ) : null}
 
       {check.will_merge && check.canonical_lead ? (
-        <div className="text-[10px] leading-relaxed text-amber-900 dark:text-amber-100">
-          <p className="font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-            Duplicate lead — will merge
-          </p>
-          <p>
+        <div className="crm-intake-alert__block">
+          <p className="crm-intake-alert__title">Duplicate lead — will merge</p>
+          <p className="crm-intake-alert__body">
             Matching phone number on existing lead{' '}
             <strong>
               {formatLeadDisplayCode({
@@ -79,7 +75,7 @@ export function LeadIntakeAlerts({
           {onOpenLead ? (
             <button
               type="button"
-              className="mt-1 font-semibold text-primary underline-offset-2 hover:underline"
+              className="crm-intake-alert__action"
               onClick={() => onOpenLead(check.canonical_lead!.id)}
             >
               Open existing lead
@@ -89,23 +85,21 @@ export function LeadIntakeAlerts({
       ) : null}
 
       {!check.will_merge && check.duplicate_leads.length > 0 ? (
-        <div className="text-[10px] leading-relaxed text-amber-900 dark:text-amber-100">
-          <p className="font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-            Possible duplicate leads
-          </p>
-          <ul className="mt-1 space-y-1">
+        <div className="crm-intake-alert__block">
+          <p className="crm-intake-alert__title">Possible duplicate leads</p>
+          <ul className="crm-intake-alert__list">
             {check.duplicate_leads.map((dup) => (
               <li key={dup.id}>
                 {onOpenLead ? (
                   <button
                     type="button"
-                    className="text-left font-medium text-primary underline-offset-2 hover:underline"
+                    className="crm-intake-alert__link"
                     onClick={() => onOpenLead(dup.id)}
                   >
                     {formatLeadDisplayCode({ leadCode: dup.lead_code ?? undefined, id: dup.id })}
                   </button>
                 ) : (
-                  <span className="font-medium">
+                  <span className="crm-intake-alert__link-text">
                     {formatLeadDisplayCode({ leadCode: dup.lead_code ?? undefined, id: dup.id })}
                   </span>
                 )}

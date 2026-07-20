@@ -6,6 +6,7 @@ import {
   type LeadDetailsFields,
 } from "@/lib/lead-details";
 import { normalizeLeadPriority } from "@/lib/lead-priority";
+import { resolvePipelineStage } from "@/lib/lead-pipeline";
 import type { Lead, LeadActivity, LeadFollowup, LeadNote } from "@/lib/store";
 
 /** API snake_case shapes (CRM backend). */
@@ -272,7 +273,7 @@ export function mapLeadFromApi(
     email: lead.email ?? undefined,
     phone: lead.phone ?? undefined,
     source: lead.source ?? undefined,
-    status: lead.status,
+    status: resolvePipelineStage(lead.status),
     value: lead.value,
     assignedToId: lead.assigned_to_id ?? undefined,
     assignmentStatus: (lead.assignment_status as Lead['assignmentStatus']) ?? undefined,
@@ -591,6 +592,10 @@ export type ApiLeadAssignmentPending = {
   phone: string | null;
   assigned_by_id: string | null;
   assigned_by_name: string | null;
+  assigned_at: string | null;
+  accept_within_working_minutes: number;
+  working_minutes_elapsed: number;
+  minutes_remaining: number;
   updated_at: string;
 };
 
@@ -604,6 +609,10 @@ export type LeadAssignmentPending = {
   phone?: string;
   assignedById?: string;
   assignedByName?: string;
+  assignedAt?: string;
+  acceptWithinWorkingMinutes: number;
+  workingMinutesElapsed: number;
+  minutesRemaining: number;
   updatedAt: string;
 };
 
@@ -618,6 +627,10 @@ export function mapPendingAssignmentFromApi(row: ApiLeadAssignmentPending): Lead
     phone: row.phone ?? undefined,
     assignedById: row.assigned_by_id ?? undefined,
     assignedByName: row.assigned_by_name ?? undefined,
+    assignedAt: row.assigned_at ?? undefined,
+    acceptWithinWorkingMinutes: row.accept_within_working_minutes,
+    workingMinutesElapsed: row.working_minutes_elapsed,
+    minutesRemaining: row.minutes_remaining,
     updatedAt: row.updated_at,
   };
 }

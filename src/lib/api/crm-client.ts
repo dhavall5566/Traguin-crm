@@ -48,7 +48,7 @@ export function mapApiUser(user: ApiUser, role = "Agency Admin"): User {
   };
 }
 
-export const CRM_FETCH_TIMEOUT_MS = 12_000;
+export const CRM_FETCH_TIMEOUT_MS = 30_000;
 
 type CrmFetchInit = RequestInit & {
   redirectOn401?: boolean;

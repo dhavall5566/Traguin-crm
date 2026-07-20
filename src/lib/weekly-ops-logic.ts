@@ -14,12 +14,13 @@ import {
   type Itinerary,
   type Payment,
 } from '@/lib/store';
+import { ACTIVE_PIPELINE_STATUSES, isItinerarySentStage } from '@/lib/lead-pipeline';
 
 /** Structured activity type written by the CRM API on PROPOSAL_SENT entry. */
 export const ENTERED_PROPOSAL_SENT_ACTIVITY = 'ENTERED_PROPOSAL_SENT';
 
 /** Legacy pre-column STAGE_CHANGE descriptions (demo seed / old UI). */
-const LEGACY_PROPOSAL_SENT_STAGE_CHANGE = /\bto\s+PROPOSAL_SENT\b/i;
+const LEGACY_ITINERARY_SENT_STAGE_CHANGE = /\bto\s+(PROPOSAL_SENT|ITINERARY_SENT)\b/i;
 
 export type OpsCalendarEventKind = 'departure' | 'follow_up' | 'payment_due';
 
@@ -34,7 +35,7 @@ export interface OpsCalendarEvent {
   href: string;
 }
 
-const ACTIVE_PIPELINE: Lead['status'][] = ['NEW', 'CONTACTED', 'PROPOSAL_SENT', 'NEGOTIATION'];
+const ACTIVE_PIPELINE: Lead['status'][] = [...ACTIVE_PIPELINE_STATUSES];
 
 export function startOfIsoWeek(reference: Date): Date {
   const d = new Date(reference);
@@ -118,7 +119,7 @@ export function proposalSentEnteredAt(lead: Lead, activities: LeadActivity[]): D
       (a) =>
         a.leadId === lead.id &&
         a.type === 'STAGE_CHANGE' &&
-        LEGACY_PROPOSAL_SENT_STAGE_CHANGE.test(a.description),
+        LEGACY_ITINERARY_SENT_STAGE_CHANGE.test(a.description),
     )
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   if (legacyStageChanges.length > 0) return new Date(legacyStageChanges[0].createdAt);
@@ -204,7 +205,7 @@ export function getStuckProposalLeads(
   const out: StuckProposalLeadRow[] = [];
 
   leads.forEach((lead) => {
-    if (lead.status !== 'PROPOSAL_SENT') return;
+    if (!isItinerarySentStage(lead.status)) return;
     const entered = proposalSentEnteredAt(lead, activities);
     const fallback = entered ?? (lead.updatedAt ? new Date(lead.updatedAt) : null);
     if (!fallback) return;
@@ -283,7 +284,7 @@ export function buildWeekCalendarEvents(
       dateKey: formatYMD(fuDay),
       title: lead ? `${lead.firstName} ${lead.lastName}` : 'Lead follow-up',
       subtitle: f.notes?.slice(0, 90) ?? 'Scheduled outreach',
-      href: `/dashboard/crm?openLead=${encodeURIComponent(f.leadId)}`,
+      href: `/dashboard/crm/leads/${encodeURIComponent(f.leadId)}`,
     });
   });
 

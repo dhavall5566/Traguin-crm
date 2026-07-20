@@ -25,6 +25,7 @@ import { usePendingLeadAssignments } from '@/hooks/usePendingLeadAssignments';
 import { useLeadRealtimeNotifications, CRM_LEAD_INBOUND_EVENT } from '@/hooks/useLeadRealtimeNotifications';
 import { useLeadNotifications, type LeadNotificationItem } from '@/lib/lead-notifications';
 import { LeadAssignmentNotificationEntry } from '@/components/crm/LeadAssignmentNotificationEntry';
+import { useNavigateToLeadDetail } from '@/hooks/useNavigateToLeadDetail';
 import {
   formatAuditLogDetails,
   getAuditNotificationHref,
@@ -75,6 +76,16 @@ function prefetchNavTree(item: CrmNavItem, onPrefetch: (href: string) => void) {
   }
 }
 
+function formatUserRole(role: string): string {
+  const trimmed = role.trim();
+  if (!trimmed) return 'Team member';
+  return trimmed
+    .split(/[\s_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 function CrmAccountBar({
   name,
   role,
@@ -88,6 +99,8 @@ function CrmAccountBar({
   onLogout: () => void;
   className?: string;
 }) {
+  const displayRole = formatUserRole(role);
+
   return (
     <div className={`crm-account-bar${className ? ` ${className}` : ''}`}>
       <div className="crm-account-bar__identity">
@@ -96,9 +109,10 @@ function CrmAccountBar({
         </span>
         <div className="crm-account-bar__meta">
           <span className="crm-account-bar__name">{name}</span>
-          <span className="crm-account-bar__role">{role}</span>
+          <span className="crm-account-bar__role">{displayRole}</span>
         </div>
       </div>
+      <span className="crm-account-bar__divider" aria-hidden />
       <button
         type="button"
         onClick={onLogout}
@@ -106,7 +120,7 @@ function CrmAccountBar({
         title="Sign out"
         aria-label="Sign out"
       >
-        <LogOut className="w-4 h-4" aria-hidden />
+        <LogOut className="crm-account-bar__logout-icon" aria-hidden />
       </button>
     </div>
   );
@@ -226,7 +240,7 @@ function SidebarNavLink({
       className={`${nested ? 'crm-nav-subtab' : 'crm-nav-link group'} ${isActive ? (nested ? 'crm-nav-subtab--active' : 'crm-nav-link--active') : ''}`}
       aria-current={isActive ? 'page' : undefined}
     >
-      {!nested && <Icon className="w-4 h-4 shrink-0" />}
+      {!nested && <Icon className="h-[1.125rem] w-[1.125rem] shrink-0" />}
       <span>{item.name}</span>
     </Link>
   );
@@ -426,6 +440,7 @@ function AuditLogEntry({
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const navigateToLead = useNavigateToLeadDetail();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -451,6 +466,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   } = usePendingLeadAssignments(authStatus === 'authenticated' && Boolean(currentUser));
 
   const isDashboardRoute = pathname.startsWith('/dashboard');
+  const isLeadDetailRoute = /^\/dashboard\/crm\/leads\/[^/]+$/.test(pathname);
   useLeadRealtimeNotifications(authStatus === 'authenticated' && isDashboardRoute);
 
   const agencyAuditLogs = useMemo(
@@ -605,7 +621,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
 
   const handleOpenLeadNotification = (leadId: string) => {
     handleDismissNotifications();
-    router.push(`/dashboard/crm?openLead=${encodeURIComponent(leadId)}`);
+    navigateToLead(leadId);
   };
 
   const handleOpenAuditNotification = (log: AuditLog) => {
@@ -618,7 +634,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const handleAcceptAssignment = async (leadId: string) => {
     await acceptAssignment(leadId);
     handleDismissNotifications();
-    router.push(`/dashboard/crm?openLead=${encodeURIComponent(leadId)}`);
+    navigateToLead(leadId);
   };
 
   const handleRejectAssignment = async (leadId: string) => {
@@ -826,13 +842,13 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
         <div
           className={`crm-body min-h-0 flex-1 ${
             workspacePreferences.densePagePadding ? 'crm-body--dense' : ''
-          }`}
+          } ${isLeadDetailRoute ? 'crm-body--lead-detail' : ''}`}
         >
           <main className="crm-main w-full">
             <div
               className={`crm-workspace ${
                 workspacePreferences.densePagePadding ? 'crm-workspace--dense' : ''
-              }`}
+              } ${isLeadDetailRoute ? 'crm-workspace--lead-detail' : ''}`}
             >
               {children}
             </div>

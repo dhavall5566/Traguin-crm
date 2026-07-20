@@ -15,6 +15,7 @@ import { CrmToggle } from '@/components/ui/CrmToggle';
 import { crmToastError } from '@/lib/crm-toast-bus';
 import type { User } from '@/lib/store';
 import type { LeadMailEventType } from '@/lib/api/lead-mail-settings';
+import { fetchNotificationMatrix, type NotificationMatrixRow } from '@/lib/api/notification-matrix';
 
 type EventDraft = {
   event_type: LeadMailEventType;
@@ -67,6 +68,7 @@ export function SettingsEmailPanel() {
   const [activeEvent, setActiveEvent] = useState<LeadMailEventType>('website_lead');
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [matrixRows, setMatrixRows] = useState<NotificationMatrixRow[]>([]);
   const hydratingRef = useRef(true);
   const hydratedAgencyRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,6 +123,20 @@ export function SettingsEmailPanel() {
         if (!cancelled) setTeamLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAgency.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchNotificationMatrix()
+      .then((rows) => {
+        if (!cancelled) setMatrixRows(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setMatrixRows([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -456,6 +472,48 @@ export function SettingsEmailPanel() {
               />
             </CrmTablePanel>
           )}
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Lead flow notification matrix</h2>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Role-based routing from Lead Flow Guide v4.2. Ops Head resolves to Nisha (name match) or Operations role; Account resolves to Finance role.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="crm-data-table w-full text-[11px]">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Customer</th>
+                  <th>RM</th>
+                  <th>Account</th>
+                  <th>Ops</th>
+                  <th>Admin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matrixRows.map((row) => (
+                  <tr key={row.event}>
+                    <td className="font-medium">{row.label}</td>
+                    <td>{row.customer ? '✓' : '—'}</td>
+                    <td>{row.rm ? '✓' : '—'}</td>
+                    <td>{row.account ? '✓' : '—'}</td>
+                    <td>{row.ops_head ? '✓' : '—'}</td>
+                    <td>{row.admin ? '✓' : '—'}</td>
+                  </tr>
+                ))}
+                {matrixRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="crm-data-table__empty">
+                      Notification matrix unavailable.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </div>

@@ -1,0 +1,1896 @@
+/* ============================================================
+   Itinerary builder — enterprise workspace
+   Regions: list rail | editor (schedule + client preview)
+   ============================================================ */
+
+.crm-itinerary-page {
+  --itin-rail-w: 17.25rem;
+  --itin-pricing-w: 15.5rem;
+  --itin-border: var(--border);
+  --itin-surface: var(--card);
+  --itin-surface-raised: color-mix(in srgb, var(--secondary) 28%, var(--card));
+  --itin-status-draft: #94a3b8;
+  --itin-status-sent: #3b82f6;
+  --itin-status-approved: #10b981;
+  --itin-status-rejected: #ef4444;
+
+  margin: -1.5rem -1.65rem -1.65rem;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8125rem;
+}
+
+.crm-workspace--dense .crm-itinerary-page {
+  margin: -1rem -1.1rem -1.1rem;
+}
+
+.crm-itinerary-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--itin-surface);
+}
+
+/* ============ Status dot ============ */
+.crm-itin-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--itin-status-draft);
+}
+
+.crm-itin-dot[data-status='SENT'] {
+  background: var(--itin-status-sent);
+}
+
+.crm-itin-dot[data-status='APPROVED'] {
+  background: var(--itin-status-approved);
+}
+
+.crm-itin-dot[data-status='REJECTED'] {
+  background: var(--itin-status-rejected);
+}
+
+/* ============ List rail ============ */
+.crm-itin-rail {
+  display: flex;
+  width: var(--itin-rail-w);
+  min-width: var(--itin-rail-w);
+  flex-direction: column;
+  border-right: 1px solid var(--itin-border);
+  background: var(--itin-surface);
+}
+
+.crm-itin-rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--itin-border);
+}
+
+.crm-itin-rail__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.crm-itin-rail__head-actions {
+  display: flex;
+  align-items: center;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.crm-itin-rail__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: auto;
+  height: 1.75rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.4rem;
+  background: var(--itin-surface);
+  color: var(--muted-foreground);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.crm-itin-rail__icon-btn:hover {
+  color: var(--foreground);
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-rail__icon-btn--primary {
+  border-color: transparent;
+  background: var(--gold);
+  color: var(--primary-foreground);
+}
+
+.crm-itin-rail__icon-btn--primary:hover {
+  background: var(--gold);
+  color: var(--primary-foreground);
+  filter: brightness(1.06);
+}
+
+.crm-itin-rail__search {
+  position: relative;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--itin-border);
+}
+
+.crm-itin-rail__search svg {
+  position: absolute;
+  top: 50%;
+  left: 1.35rem;
+  transform: translateY(-50%);
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.crm-itin-rail__search input {
+  width: 100%;
+  height: 2rem;
+  padding: 0 0.6rem 0 1.85rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--itin-surface-raised);
+  font-size: 0.75rem;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.crm-itin-rail__search input:focus {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+  background: var(--itin-surface);
+}
+
+.crm-itin-rail__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.45rem 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.crm-itin-rail__empty {
+  margin: 0.35rem 0.25rem;
+  padding: 1.25rem 0.75rem;
+  border: 1px dashed var(--itin-border);
+  border-radius: 0.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* Sidebar itinerary card */
+.crm-itin-card {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.crm-itin-card__inner {
+  position: relative;
+  padding: 0.55rem 0.6rem 0.55rem 0.55rem;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.crm-itin-card:hover .crm-itin-card__inner {
+  background: var(--itin-surface-raised);
+  border-color: var(--itin-border);
+  border-left-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+}
+
+.crm-itin-card--active .crm-itin-card__inner {
+  border-color: color-mix(in srgb, var(--gold) 28%, var(--itin-border));
+  border-left-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 9%, var(--card));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.crm-itin-card__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: start;
+  column-gap: 0.4rem;
+  row-gap: 0;
+  min-width: 0;
+}
+
+.crm-itin-card__status-dot {
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 0.28rem;
+}
+
+.crm-itin-card__title-block {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-width: 0;
+  padding-right: 0.15rem;
+}
+
+.crm-itin-card__destination {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+
+.crm-itin-card--active .crm-itin-card__destination {
+  font-weight: 700;
+}
+
+.crm-itin-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.28rem;
+}
+
+.crm-itin-card__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--secondary) 55%, var(--card));
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-card__chip--ai {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.crm-itin-card__chip--dirty {
+  background: color-mix(in srgb, #f59e0b 18%, var(--card));
+  color: #b45309;
+}
+
+.crm-itin-card__status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.5625rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.crm-itin-card__status[data-status='DRAFT'] {
+  background: color-mix(in srgb, var(--itin-status-draft) 16%, var(--card));
+  color: color-mix(in srgb, var(--itin-status-draft) 85%, #000);
+}
+
+.crm-itin-card__status[data-status='SENT'] {
+  background: color-mix(in srgb, var(--itin-status-sent) 14%, var(--card));
+  color: color-mix(in srgb, var(--itin-status-sent) 80%, #000);
+}
+
+.crm-itin-card__status[data-status='APPROVED'] {
+  background: color-mix(in srgb, var(--itin-status-approved) 14%, var(--card));
+  color: color-mix(in srgb, var(--itin-status-approved) 75%, #000);
+}
+
+.crm-itin-card__status[data-status='REJECTED'] {
+  background: color-mix(in srgb, var(--itin-status-rejected) 12%, var(--card));
+  color: color-mix(in srgb, var(--itin-status-rejected) 78%, #000);
+}
+
+.crm-itin-card__price {
+  grid-column: 3;
+  grid-row: 1;
+  margin: 0;
+  padding-top: 0.05rem;
+  padding-right: 1.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-card__delete {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.crm-itin-card:hover .crm-itin-card__delete,
+.crm-itin-card__delete:focus-visible {
+  opacity: 1;
+}
+
+.crm-itin-card__delete:hover {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+/* ============ Editor column ============ */
+.crm-itin-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+}
+
+/* Toolbar */
+.crm-itin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.4rem 1rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface);
+}
+
+.crm-itin-toolbar__title {
+  flex: 1;
+  min-width: 8rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  background: transparent;
+  padding: 0.3rem 0.5rem;
+  margin-left: -0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.crm-itin-toolbar__title:hover {
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-toolbar__title:focus {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+  background: var(--itin-surface);
+}
+
+.crm-itin-status-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.crm-itin-status-select select {
+  appearance: none;
+  height: 2rem;
+  padding: 0 1.6rem 0 1.5rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--itin-surface);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.crm-itin-status-select > .crm-itin-dot {
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.crm-itin-status-select__chevron {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.crm-itin-toolbar__divider {
+  width: 1px;
+  height: 1.5rem;
+  flex-shrink: 0;
+  background: var(--itin-border);
+}
+
+.crm-itin-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.crm-itin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--itin-surface);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.crm-itin-btn:hover {
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-btn:disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.crm-itin-btn svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.crm-itin-btn--primary {
+  border-color: transparent;
+  background: var(--gold);
+  color: var(--primary-foreground);
+}
+
+.crm-itin-btn--primary:hover {
+  background: var(--gold);
+  filter: brightness(1.06);
+}
+
+.crm-itin-btn--danger {
+  border-color: color-mix(in srgb, var(--destructive) 35%, transparent);
+  color: var(--destructive);
+  background: transparent;
+}
+
+.crm-itin-btn--danger:hover {
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+
+.crm-itin-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-btn--ghost:hover {
+  color: var(--foreground);
+  background: var(--itin-surface-raised);
+}
+
+/* Trip meta + client total */
+.crm-itin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface);
+}
+
+.crm-itin-meta__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.crm-itin-meta__label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-meta__value {
+  font-size: 0.75rem;
+  font-weight: 650;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-total-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+  min-width: 6.5rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--itin-border));
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--gold) 6%, var(--background));
+  line-height: 1.15;
+}
+
+.crm-itin-total-badge__label {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-total-badge__value {
+  font-size: 0.875rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-pricing-panel {
+  margin: 0;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.55rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold) 4%, var(--background)) 0%,
+    var(--background) 100%
+  );
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.crm-itin-pricing-panel__head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.55rem;
+  border-bottom: 1px solid var(--itin-border);
+}
+
+.crm-itin-pricing-panel__title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.crm-itin-pricing-panel__hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+  line-height: 1.35;
+}
+
+.crm-itin-pricing-panel__breakdown {
+  width: 100%;
+}
+
+.crm-itin-pricing-panel__head .crm-itin-total__amount {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.crm-itin-pricing-panel__head .crm-itin-total__value-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.crm-itin-total {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  min-width: 13.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.55rem;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold) 5%, var(--background)) 0%,
+    var(--background) 100%
+  );
+  line-height: 1.2;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.crm-itin-total__hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--itin-border) 85%, var(--gold) 15%);
+}
+
+.crm-itin-total__label {
+  margin: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-total__amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.15rem 0.35rem 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--itin-border));
+  border-radius: 0.4rem;
+  background: var(--background);
+  cursor: text;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.crm-itin-total__amount:focus-within {
+  border-color: color-mix(in srgb, var(--gold) 65%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 14%, transparent);
+}
+
+.crm-itin-total__currency {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--foreground) 72%, var(--muted-foreground));
+}
+
+.crm-itin-total__value-input {
+  width: 6.75rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  text-align: right;
+  line-height: 1.2;
+}
+
+.crm-itin-total__value-input:focus {
+  outline: none;
+}
+
+.crm-itin-total__breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.crm-itin-total__row {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.15rem;
+}
+
+.crm-itin-total__row-label {
+  font-size: 0.5625rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-total__row-value,
+.crm-itin-total__row-delta {
+  justify-self: end;
+  font-size: 0.625rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-total__row:not(.crm-itin-total__row--edit) .crm-itin-total__row-value {
+  grid-column: 3;
+}
+
+.crm-itin-total__row-delta {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground));
+}
+
+.crm-itin-total__row-delta--neg {
+  color: color-mix(in srgb, #dc2626 75%, var(--foreground));
+}
+
+.crm-itin-total__row--total {
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--itin-border);
+}
+
+.crm-itin-total__row--total .crm-itin-total__row-label,
+.crm-itin-total__row--total .crm-itin-total__row-value {
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.crm-itin-total__row--edit .crm-itin-total__pct-field {
+  justify-self: start;
+}
+
+.crm-itin-total__pct-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.3rem;
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-total__pct-field:focus-within {
+  border-color: color-mix(in srgb, var(--gold) 50%, var(--border));
+  background: var(--background);
+}
+
+.crm-itin-total__pct-input {
+  width: 2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  text-align: right;
+  line-height: 1.2;
+  -moz-appearance: textfield;
+}
+
+.crm-itin-total__pct-input::-webkit-outer-spin-button,
+.crm-itin-total__pct-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.crm-itin-total__pct-input:focus {
+  outline: none;
+}
+
+.crm-itin-total__pct-suffix {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+/* Body: draft editor + pricing sidebar */
+.crm-itin-body {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.crm-itin-body__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.crm-itin-body__pricing {
+  flex-shrink: 0;
+  width: var(--itin-pricing-w);
+  min-width: var(--itin-pricing-w);
+  padding: 0.75rem 0.65rem;
+  border-left: 1px solid var(--itin-border);
+  background: color-mix(in srgb, var(--secondary) 12%, var(--background));
+  overflow-y: auto;
+}
+
+.crm-itin-body__pricing .crm-itin-pricing-panel {
+  position: sticky;
+  top: 0;
+}
+
+.crm-itin-body__pricing .crm-itin-total__row {
+  grid-template-columns: 3.35rem minmax(0, 1fr) auto;
+}
+
+.crm-itin-schedule-pane {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Day navigator */
+.crm-itin-daynav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  flex-shrink: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--background);
+}
+
+.crm-itin-daynav__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.crm-itin-daynav__label {
+  margin: 0;
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-daynav__track {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 0.3rem;
+  padding: 0.25rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.55rem;
+  background: var(--itin-surface-raised);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.crm-itin-daynav__track::-webkit-scrollbar {
+  display: none;
+}
+
+.crm-itin-daytab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 11rem;
+  padding: 0.3rem 0.55rem 0.3rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.42rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.crm-itin-daytab:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--background) 70%, transparent);
+}
+
+.crm-itin-daytab:focus {
+  outline: none;
+}
+
+.crm-itin-daytab:focus-visible {
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+.crm-itin-daytab--active {
+  border-color: var(--itin-border);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.crm-itin-daytab__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-daytab--active .crm-itin-daytab__num {
+  background: var(--gold);
+  color: var(--primary-foreground);
+}
+
+.crm-itin-daytab__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.crm-itin-daytab__title {
+  overflow: hidden;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crm-itin-daytab__meta {
+  font-size: 0.5625rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-daytab--active .crm-itin-daytab__meta {
+  color: color-mix(in srgb, var(--foreground) 58%, transparent);
+}
+
+.crm-itin-daynav__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--background);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.crm-itin-daynav__add:hover {
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--border));
+  background: var(--itin-surface);
+}
+
+.crm-itin-daynav__add:focus {
+  outline: none;
+}
+
+.crm-itin-daynav__add:focus-visible {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+/* Day header row (inside schedule table) */
+.crm-itin-table__toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface);
+}
+
+.crm-itin-dayhead__num {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.crm-itin-dayhead__title {
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--background);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.crm-itin-dayhead__title:focus {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+}
+
+.crm-itin-dayhead__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.crm-itin-dayhead__actions .crm-itin-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Activity table */
+.crm-itin-table {
+  margin: 0 1rem 1rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.5rem;
+  background: var(--itin-surface);
+  overflow: hidden;
+}
+
+.crm-itin-table__head {
+  display: grid;
+  grid-template-columns: 6rem 1fr 7.5rem 4.5rem;
+  gap: 0.75rem;
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface-raised);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-table__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr 7.5rem 4.5rem;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  font-size: 0.8125rem;
+  transition: background 0.1s ease;
+}
+
+.crm-itin-table__row:last-child {
+  border-bottom: none;
+}
+
+.crm-itin-table__row:hover {
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-table__time {
+  padding-top: 0.1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+.crm-itin-table__label {
+  margin: 0;
+  min-width: 0;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--foreground);
+}
+
+.crm-itin-table__activity {
+  min-width: 0;
+}
+
+.crm-itin-table__detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  white-space: pre-line;
+}
+
+.crm-itin-table__structured {
+  margin-top: 0.2rem;
+}
+
+.crm-itin-table__structured-category {
+  margin: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.crm-itin-table__structured-places {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-type-badge {
+  margin-top: 0.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  background: var(--itin-surface-raised);
+  white-space: nowrap;
+}
+
+.crm-itin-table__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  padding-top: 0.1rem;
+}
+
+.crm-itin-table__actions .crm-itin-icon-btn {
+  opacity: 0;
+}
+
+.crm-itin-table__row:hover .crm-itin-icon-btn,
+.crm-itin-table__row:focus-within .crm-itin-icon-btn {
+  opacity: 1;
+}
+
+.crm-itin-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.crm-itin-icon-btn:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.crm-itin-icon-btn--danger:hover {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive);
+}
+
+.crm-itin-table__empty {
+  padding: 1.75rem 1rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-table__empty strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* ============ Client preview (in editor column) ============ */
+.crm-itin-preview-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  border: 1px solid var(--itin-border);
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  background: var(--itin-surface);
+  overflow: hidden;
+}
+
+.crm-itin-preview-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-preview-section__title {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-preview-section__hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-preview-section__theme {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--itin-border);
+}
+
+.crm-itin-preview-section__frame {
+  flex: 1;
+  min-height: 0;
+  padding: 0.65rem 0.75rem 0.85rem;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--secondary) 18%, var(--background));
+}
+
+.crm-itin-preview-section__frame > * {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+/* Draft proposal editor */
+.crm-itin-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 1rem;
+  box-shadow: none !important;
+}
+
+.crm-itin-draft__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.crm-itin-draft__toolbar-label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-draft__toolbar-hint {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-draft__days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.crm-itin-draft-day {
+  overflow: hidden;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.65rem;
+  background: #fff;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.crm-itin-draft-day__header {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+  padding: 0.45rem 0.45rem 0.45rem 0;
+}
+
+.crm-itin-draft-day__toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.crm-itin-draft-day__toggle:hover {
+  background: color-mix(in srgb, var(--secondary) 35%, transparent);
+  border-radius: 0.45rem;
+}
+
+.crm-itin-draft-day__badge {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-right: 0.65rem;
+  border-right: 1px solid color-mix(in srgb, #b45309 28%, transparent);
+}
+
+.crm-itin-draft-day__badge-label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.crm-itin-draft-day__badge-num {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #b45309;
+}
+
+.crm-itin-draft-day__heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.crm-itin-draft-day__title-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  outline: none;
+}
+
+.crm-itin-draft-day__subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-draft-day__chevron {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: #b45309;
+  transition: transform 0.2s ease;
+}
+
+.crm-itin-draft-day__chevron--open {
+  transform: rotate(180deg);
+}
+
+.crm-itin-draft-day__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding-right: 0.35rem;
+}
+
+.crm-itin-draft-day__segments {
+  border-top: 1px solid var(--itin-border);
+}
+
+.crm-itin-draft-segment {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.crm-itin-draft-segment + .crm-itin-draft-segment {
+  border-top: 1px solid color-mix(in srgb, var(--itin-border) 80%, transparent);
+}
+
+.crm-itin-draft-segment__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.crm-itin-draft-segment__label {
+  margin: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.crm-itin-draft-segment__text {
+  margin: 0.35rem 0 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.crm-itin-draft-segment__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+
+.crm-itin-print-only {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+@media print {
+  .crm-itin-print-only {
+    position: static;
+    left: auto;
+    width: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .no-print,
+  .crm-itin-rail,
+  .crm-itin-toolbar,
+  .crm-itin-meta,
+  .crm-itin-draft {
+    display: none !important;
+  }
+}
+
+.crm-itin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.crm-itin-field__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-field select,
+.crm-itin-field input[type='text'] {
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--background);
+  font-size: 0.75rem;
+  color: var(--foreground);
+}
+
+/* ============ Activity modal ============ */
+.crm-itin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.crm-itin-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 34rem;
+  max-height: min(85vh, 42rem);
+  border: 1px solid var(--itin-border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 30%, transparent);
+  overflow: hidden;
+}
+
+.crm-itin-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.15rem;
+  border-bottom: 1px solid var(--itin-border);
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-modal__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.crm-itin-modal__subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.crm-itin-modal__close:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.crm-itin-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  overflow-y: auto;
+}
+
+.crm-itin-modal__section-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-modal__list {
+  max-height: 11rem;
+  overflow-y: auto;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.5rem;
+}
+
+.crm-itin-modal__row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  font-size: 0.75rem;
+  transition: background 0.1s ease;
+}
+
+.crm-itin-modal__row:last-child {
+  border-bottom: none;
+}
+
+.crm-itin-modal__row:hover {
+  background: var(--itin-surface-raised);
+}
+
+.crm-itin-modal__row--editing {
+  background: color-mix(in srgb, var(--gold) 8%, var(--card));
+}
+
+.crm-itin-modal__row-time {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+.crm-itin-modal__row-label {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.crm-itin-modal__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.crm-itin-modal__editing-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold) 20%, transparent);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--gold) 80%, #000);
+}
+
+.crm-itin-form-grid {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0.75rem;
+}
+
+.crm-itin-field input[type='text'],
+.crm-itin-field select,
+.crm-itin-field textarea {
+  width: 100%;
+  padding: 0 0.55rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.45rem;
+  background: var(--background);
+  font-size: 0.75rem;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+
+.crm-itin-field input[type='text']:focus,
+.crm-itin-field select:focus,
+.crm-itin-field textarea:focus {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+}
+
+.crm-itin-field textarea {
+  min-height: 4.5rem;
+  padding: 0.5rem 0.55rem;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.crm-itin-field__help {
+  margin: 0;
+  font-size: 0.625rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.crm-itin-modal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1.15rem;
+  border-top: 1px solid var(--itin-border);
+  background: var(--itin-surface-raised);
+}
+
+@media (max-width: 560px) {
+  .crm-itin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============ Empty states ============ */
+.crm-itin-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.crm-itin-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--itin-border);
+  border-radius: 0.75rem;
+  background: var(--itin-surface);
+  color: var(--muted-foreground);
+}
+
+.crm-itin-empty__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--foreground);
+}
+
+.crm-itin-empty__text {
+  margin: 0;
+  max-width: 20rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* ============ Responsive ============ */
+@media (max-width: 900px) {
+  .crm-itinerary-page {
+    margin: -1rem;
+  }
+
+  .crm-itinerary-workspace {
+    flex-direction: column;
+  }
+
+  .crm-itin-rail {
+    width: 100%;
+    min-width: 0;
+    max-height: 13rem;
+    border-right: none;
+    border-bottom: 1px solid var(--itin-border);
+  }
+
+  .crm-itin-table__toolbar {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .crm-itin-draft-day__header {
+    flex-wrap: wrap;
+  }
+
+  .crm-itin-draft-day__actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding: 0 0.55rem 0.35rem;
+  }
+
+  .crm-itin-dayhead__actions {
+    justify-content: flex-start;
+  }
+
+  .crm-itin-table__head {
+    display: none;
+  }
+
+  .crm-itin-table__row {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .crm-itin-table__actions {
+    justify-content: flex-start;
+  }
+
+  .crm-itin-table__actions .crm-itin-icon-btn {
+    opacity: 1;
+  }
+
+  .crm-itin-body {
+    flex-direction: column;
+  }
+
+  .crm-itin-body__pricing {
+    width: 100%;
+    min-width: 0;
+    padding: 0.65rem 0.75rem 0.85rem;
+    border-left: none;
+    border-top: 1px solid var(--itin-border);
+  }
+
+  .crm-itin-body__pricing .crm-itin-pricing-panel {
+    position: static;
+  }
+}

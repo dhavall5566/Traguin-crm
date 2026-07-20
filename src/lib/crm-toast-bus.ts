@@ -1,12 +1,13 @@
 'use client';
 
-export type CrmToastBusVariant = 'success' | 'error' | 'info' | 'lead';
+export type CrmToastBusVariant = 'success' | 'error' | 'info' | 'lead' | 'confirm';
 
 export type CrmToastBusPayload = {
   message: string;
   variant?: CrmToastBusVariant;
   durationMs?: number;
   onAction?: () => void;
+  actionLabel?: string;
   leadKind?: 'new' | 'returning';
 };
 
@@ -32,6 +33,28 @@ export function crmToastError(message: string, durationMs = 3400): void {
 
 export function crmToastInfo(message: string, durationMs = 2800): void {
   crmToast({ message, variant: 'info', durationMs });
+}
+
+/** Sticky toast with a confirm action — replaces blocking window.confirm dialogs. */
+export function crmToastConfirm(
+  message: string,
+  {
+    confirmLabel = 'Confirm',
+    onConfirm,
+  }: {
+    confirmLabel?: string;
+    onConfirm: () => void | Promise<void>;
+  },
+): void {
+  crmToast({
+    message,
+    variant: 'confirm',
+    durationMs: 16000,
+    actionLabel: confirmLabel,
+    onAction: () => {
+      void onConfirm();
+    },
+  });
 }
 
 export async function runCrmAction<T>(

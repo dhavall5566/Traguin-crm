@@ -14,6 +14,7 @@ const CRM_PAGE_LABELS: Record<string, string> = {
   "/dashboard/settings/email-setup": "Email Setup",
   "/dashboard/settings/smtp": "SMTP",
   "/dashboard/settings/email": "Email configuration",
+  "/dashboard/settings/whatsapp": "WhatsApp templates",
 };
 
 export function getCrmBreadcrumbLabel(pathname: string): string {

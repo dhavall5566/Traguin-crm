@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Itinerary } from '@/lib/store';
 import {
   PROPOSAL_THEMES,
@@ -8,25 +8,13 @@ import {
   resolveProposalTheme,
 } from '@/lib/proposalThemes';
 import {
-  Hotel,
-  Plane,
-  Car,
-  MapPin,
-  Coffee,
-  FileText,
-  Calendar,
-  Map,
-  Sparkles,
-} from 'lucide-react';
-
-const iconMap = {
-  HOTEL: Hotel,
-  FLIGHT: Plane,
-  TRANSFER: Car,
-  ACTIVITY: MapPin,
-  MEAL: Coffee,
-  NOTE: FileText,
-};
+  stripItineraryPriceMentions,
+  buildSequentialDayPlanSegments,
+  extractItineraryHub,
+  parseDayExploreTitle,
+} from '@/lib/itinerary-display';
+import { DayPlanAccordion } from '@/components/proposal/DayPlanAccordion';
+import { Calendar, Map, Sparkles } from 'lucide-react';
 
 const statusLabels: Record<Itinerary['status'], string> = {
   DRAFT: 'Draft Proposal',
@@ -41,7 +29,6 @@ interface ClientProposalViewProps {
   agencyName?: string;
   agencyLogoUrl?: string;
   clientName?: string;
-  showPricing?: boolean;
   compact?: boolean;
   id?: string;
 }
@@ -60,7 +47,6 @@ export default function ClientProposalView({
   agencyName = 'Your Travel Agency',
   agencyLogoUrl,
   clientName,
-  showPricing = true,
   compact = false,
   id,
 }: ClientProposalViewProps) {
@@ -68,6 +54,38 @@ export default function ClientProposalView({
   const dateRange = formatDateRange(itinerary.startDate, itinerary.endDate);
   const totalDays = itinerary.days?.length ?? 0;
   const totalItems = itinerary.days?.reduce((n, d) => n + d.items.length, 0) ?? 0;
+  const destinationHub =
+    extractItineraryHub(itinerary) ||
+    parseDayExploreTitle(itinerary.days?.[0]?.title ?? '').city ||
+    '';
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => {
+    const ids = (itinerary.days ?? []).map((day) => day.id);
+    return new Set(ids);
+  });
+
+  const toggleDay = (dayId: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dayId)) next.delete(dayId);
+      else next.add(dayId);
+      return next;
+    });
+  };
+
+  const dayIdsKey = useMemo(
+    () => (itinerary.days ?? []).map((day) => day.id).join(','),
+    [itinerary.days],
+  );
+
+  const segmentsByDay = useMemo(
+    () => buildSequentialDayPlanSegments(itinerary.days ?? [], destinationHub),
+    [itinerary.days, destinationHub],
+  );
+
+  React.useEffect(() => {
+    const ids = (itinerary.days ?? []).map((day) => day.id);
+    setExpandedDays(new Set(ids));
+  }, [dayIdsKey, itinerary.days]);
 
   return (
     <div
@@ -119,7 +137,7 @@ export default function ClientProposalView({
           </h2>
           {itinerary.description && (
             <p className={`leading-relaxed ${compact ? 'text-[10px]' : 'text-[11px]'} ${theme.subtitle}`}>
-              {itinerary.description}
+              {stripItineraryPriceMentions(itinerary.description)}
             </p>
           )}
         </div>
@@ -157,69 +175,31 @@ export default function ClientProposalView({
                 />
               )}
               <div
-                className={`absolute left-0 top-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold ${theme.dayBadge}`}
-              >
-                {day.dayNumber}
-              </div>
+                className={`absolute left-[11px] top-4 h-2 w-2 rounded-full ${theme.dayBadge}`}
+                aria-hidden
+              />
 
               <div className="space-y-2">
-                <h3 className={`font-bold ${theme.dayTitle}`}>{day.title}</h3>
+                <DayPlanAccordion
+                  dayNumber={day.dayNumber}
+                  city={parseDayExploreTitle(day.title).city}
+                  highlight={parseDayExploreTitle(day.title).highlight}
+                  segments={segmentsByDay.get(day.id) ?? []}
+                  expanded={expandedDays.has(day.id)}
+                  onToggle={() => toggleDay(day.id)}
+                  compact={compact}
+                />
                 {day.description && (
                   <p className={`text-[10px] leading-relaxed pl-3 border-l-2 ${theme.dayDesc}`}>
-                    {day.description}
+                    {stripItineraryPriceMentions(day.description)}
                   </p>
                 )}
 
-                <div className="space-y-1.5 pt-1">
-                  {day.items.map((item) => {
-                    const ItemIcon = iconMap[item.type] || FileText;
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center justify-between gap-2 p-2.5 rounded-xl transition-colors ${theme.itemCard}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`p-1.5 rounded-lg shrink-0 ${theme.itemIcon}`}>
-                            <ItemIcon className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className={`font-semibold truncate ${theme.itemTitle}`}>{item.title}</p>
-                            <p className={`text-[9px] truncate ${theme.itemDetail}`}>{item.details}</p>
-                          </div>
-                        </div>
-                        {showPricing && (
-                          <span className={`shrink-0 font-bold text-[10px] ${theme.price}`}>
-                            ₹{Number(item.sellingPrice).toLocaleString('en-IN')}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           ))
         )}
       </div>
-
-      {/* Footer */}
-      {showPricing && (
-        <div className={`relative px-5 py-4 ${theme.footer}`}>
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className={`text-[9px] uppercase tracking-wider font-bold ${theme.subtitle}`}>
-                Total Investment
-              </p>
-              <p className={`text-[9px] ${theme.itemDetail}`}>
-                Inclusive of curated segments · taxes as applicable
-              </p>
-            </div>
-            <p className={`${compact ? 'text-lg' : 'text-xl'} font-bold ${theme.price}`}>
-              ₹{Number(itinerary.totalPrice).toLocaleString('en-IN')}
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore, Customer } from '@/lib/store';
 import { useCustomersPage } from '@/hooks/useCustomersPage';
@@ -15,12 +15,18 @@ import { DatePickerInput } from '@/components/ui/DatePickerInput';
 import { PhoneInput } from '@/components/ui/PhoneInput';
 import { defaultCountryCode } from '@/data/country-codes';
 import { formatFullPhone, parsePhoneNumber } from '@/lib/phone-input';
+import { formatCustomerDisplayCode } from '@/lib/lead-codes';
 import { isEmailConflictError } from '@/lib/api/customers';
 import { crmToastError, crmToastSuccess } from '@/lib/crm-toast-bus';
 import {
   buildCustomerTravelEntries,
   CustomerInlineDetailCard,
 } from '@/components/crm/CustomerInlineDetailCard';
+import { CustomerInquiryHistoryPanel } from '@/components/crm/CustomerInquiryHistoryPanel';
+import {
+  fetchCustomerInquiryHistory,
+  type CustomerInquiryHistory,
+} from '@/lib/api/customer-inquiry';
 import { 
   Users,
   Plus,
@@ -73,6 +79,11 @@ export default function CustomersPage() {
   // Upload fields
   const [docName, setDocName] = useState('');
   const [docCategory, setDocCategory] = useState('Passport');
+  const [inquiryHistory, setInquiryHistory] = useState<CustomerInquiryHistory | null>(null);
+  const [inquiryHistoryLoading, setInquiryHistoryLoading] = useState(false);
+  const [inquiryDetailsLoading, setInquiryDetailsLoading] = useState(false);
+  const [inquiryInteractionsLoading, setInquiryInteractionsLoading] = useState(false);
+  const inquiryDetailsLoadedRef = useRef(false);
 
   const agencyCustomers = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
@@ -91,8 +102,24 @@ export default function CustomersPage() {
   useEffect(() => {
     if (!selectedCustomer) return;
     const fresh = customers.find((c) => c.id === selectedCustomer.id);
-    if (fresh) setSelectedCustomer(fresh);
-    else setSelectedCustomer(null);
+    if (!fresh) {
+      setSelectedCustomer(null);
+      return;
+    }
+    setSelectedCustomer((prev) => {
+      if (!prev || prev.id !== fresh.id) return fresh;
+      if (
+        prev.firstName === fresh.firstName &&
+        prev.lastName === fresh.lastName &&
+        prev.email === fresh.email &&
+        prev.phone === fresh.phone &&
+        prev.passportNumber === fresh.passportNumber &&
+        prev.passportExpiry === fresh.passportExpiry
+      ) {
+        return prev;
+      }
+      return fresh;
+    });
   }, [customers, selectedCustomer?.id]);
 
   /** Notifications: `/dashboard/customers?openCustomer=<id>` selects that profile. */
@@ -104,6 +131,52 @@ export default function CustomersPage() {
     setSelectedCustomer(customer);
     router.replace('/dashboard/customers', { scroll: false });
   }, [searchParams, customers, currentAgency.id, router]);
+
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setInquiryHistory(null);
+      inquiryDetailsLoadedRef.current = false;
+      return;
+    }
+    let cancelled = false;
+    inquiryDetailsLoadedRef.current = false;
+    setInquiryHistoryLoading(true);
+    void fetchCustomerInquiryHistory(selectedCustomer.id, {
+      includeInteractions: false,
+      includeDetails: false,
+    })
+      .then((result) => {
+        if (!cancelled) setInquiryHistory(result);
+      })
+      .catch(() => {
+        if (!cancelled) setInquiryHistory(null);
+      })
+      .finally(() => {
+        if (!cancelled) setInquiryHistoryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomer?.id]);
+
+  const loadInquiryDetails = useCallback(() => {
+    if (!selectedCustomer || inquiryDetailsLoadedRef.current) return;
+    inquiryDetailsLoadedRef.current = true;
+    setInquiryDetailsLoading(true);
+    setInquiryInteractionsLoading(true);
+    void fetchCustomerInquiryHistory(selectedCustomer.id, {
+      includeInteractions: true,
+      includeDetails: true,
+    })
+      .then((result) => setInquiryHistory(result))
+      .catch(() => {
+        inquiryDetailsLoadedRef.current = false;
+      })
+      .finally(() => {
+        setInquiryDetailsLoading(false);
+        setInquiryInteractionsLoading(false);
+      });
+  }, [selectedCustomer?.id]);
 
   const resetForm = () => {
     setFirstName('');
@@ -310,6 +383,7 @@ export default function CustomersPage() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th title="Permanent TG ID after first booking">Customer ID</th>
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Passport No.</th>
@@ -320,13 +394,13 @@ export default function CustomersPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-3">
-                      <CrmTableSkeleton columns={6} rows={8} />
+                    <td colSpan={7} className="py-3">
+                      <CrmTableSkeleton columns={7} rows={8} />
                     </td>
                   </tr>
                 ) : customerSegment === 'b2b' ? (
                   <tr>
-                    <td colSpan={6} className="crm-data-table__empty">
+                    <td colSpan={7} className="crm-data-table__empty">
                       No B2B client accounts yet.
                     </td>
                   </tr>
@@ -365,6 +439,9 @@ export default function CustomersPage() {
                         </button>
                         </div>
                       </td>
+                      <td className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                        {formatCustomerDisplayCode(cust)}
+                      </td>
                       <td className="text-muted-foreground">{cust.email}</td>
                       <td className="text-muted-foreground">{cust.phone || 'None'}</td>
                       <td className="font-mono">
@@ -398,7 +475,7 @@ export default function CustomersPage() {
                     </tr>
                     {isExpanded ? (
                       <tr className="crm-data-table__detail-row">
-                        <td colSpan={6}>
+                        <td colSpan={7}>
                           <CustomerInlineDetailCard
                             customer={cust}
                             travelEntries={travelEntries}
@@ -414,7 +491,7 @@ export default function CustomersPage() {
                 )}
                 {!loading && customerSegment === 'direct' && agencyCustomers.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="crm-data-table__empty">
+                    <td colSpan={7} className="crm-data-table__empty">
                       {isEmptyAgency
                         ? 'No customer profiles yet.'
                         : hasSearchFilter
@@ -518,6 +595,25 @@ export default function CustomersPage() {
                   )}
                 </div>
               </div>
+
+              <CustomerInquiryHistoryPanel
+                history={inquiryHistory}
+                loading={inquiryHistoryLoading}
+                detailsLoading={inquiryDetailsLoading}
+                interactionsLoading={inquiryInteractionsLoading}
+                onExpand={loadInquiryDetails}
+                hintReturningCustomer
+                contact={
+                  selectedCustomer
+                    ? {
+                        firstName: selectedCustomer.firstName,
+                        lastName: selectedCustomer.lastName,
+                        email: selectedCustomer.email,
+                        phone: selectedCustomer.phone,
+                      }
+                    : undefined
+                }
+              />
 
               {/* Documents lists */}
               <div className="space-y-2">

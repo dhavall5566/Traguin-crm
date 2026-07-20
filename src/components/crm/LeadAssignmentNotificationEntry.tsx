@@ -20,6 +20,10 @@ export function LeadAssignmentNotificationEntry({
   const code = formatLeadDisplayCode({ leadCode: item.leadCode, id: item.id });
   const name = `${item.firstName} ${item.lastName}`.trim();
   const assigner = item.assignedByName || 'Admin';
+  const overdue = item.minutesRemaining <= 0;
+  const timerLabel = overdue
+    ? 'Accept window elapsed (working hours)'
+    : `${item.minutesRemaining} min left (working hours)`;
 
   return (
     <div className="crm-notif-item crm-notif-item--assignment">
@@ -35,7 +39,9 @@ export function LeadAssignmentNotificationEntry({
           <strong>{code}</strong> — {name}
           {item.title ? ` · ${item.title}` : ''}
         </p>
-        <p className="crm-notif-item__sub">Assigned by {assigner}</p>
+        <p className="crm-notif-item__sub">
+          Assigned by {assigner} · {timerLabel}
+        </p>
         <div className="crm-notif-assignment-actions">
           <button
             type="button"

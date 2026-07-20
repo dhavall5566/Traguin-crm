@@ -49,6 +49,7 @@ type PaginatedResponse<T> = {
 
 export type ItineraryExtras = {
   proposalTheme?: Itinerary["proposalTheme"];
+  discountRate?: number;
 };
 
 export type ItineraryCreateInput = Omit<
@@ -77,16 +78,101 @@ function detailsToApi(details: string | undefined): string | null {
   return trimmed || null;
 }
 
-export function computeItineraryTotalPrice(itin: Pick<Itinerary, "days" | "markupMargin" | "taxRate">): number {
+export function computeClientTotalFromParts(
+  itemsSubtotal: number,
+  markupMargin: number,
+  taxRate: number,
+  discountRate = 0,
+): number {
+  return computePricingBreakdown(itemsSubtotal, markupMargin, taxRate, discountRate).total;
+}
+
+export type PricingBreakdown = {
+  itemsSubtotal: number;
+  discountRate: number;
+  discountAmount: number;
+  afterDiscount: number;
+  markupRate: number;
+  markupAmount: number;
+  taxRate: number;
+  taxAmount: number;
+  total: number;
+};
+
+export function computePricingBreakdown(
+  itemsSubtotal: number,
+  markupMargin: number,
+  taxRate: number,
+  discountRate = 0,
+): PricingBreakdown {
+  const discount = clampPercent(Number(discountRate || 0));
+  const markup = Math.max(0, Number(markupMargin || 0));
+  const tax = Math.max(0, Number(taxRate || 0));
+
+  const discountAmount = Number((itemsSubtotal * (discount / 100)).toFixed(2));
+  const afterDiscount = Math.max(0, itemsSubtotal - discountAmount);
+  const markupAmount = Number((afterDiscount * (markup / 100)).toFixed(2));
+  const preTax = afterDiscount + markupAmount;
+  const taxAmount = Number((preTax * (tax / 100)).toFixed(2));
+  const total = Number((preTax + taxAmount).toFixed(2));
+
+  return {
+    itemsSubtotal,
+    discountRate: discount,
+    discountAmount,
+    afterDiscount,
+    markupRate: markup,
+    markupAmount,
+    taxRate: tax,
+    taxAmount,
+    total,
+  };
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+export function computeItineraryTotalPrice(
+  itin: Pick<Itinerary, "days" | "markupMargin" | "taxRate" | "discountRate">,
+): number {
   let baseCost = 0;
   for (const day of itin.days ?? []) {
     for (const item of day.items ?? []) {
       baseCost += Number(item.sellingPrice || 0);
     }
   }
-  const markupMult = 1 + Number(itin.markupMargin || 0) / 100;
-  const taxMult = 1 + Number(itin.taxRate || 0) / 100;
-  return Number((baseCost * markupMult * taxMult).toFixed(2));
+  return computeClientTotalFromParts(
+    baseCost,
+    itin.markupMargin,
+    itin.taxRate,
+    itin.discountRate ?? 0,
+  );
+}
+
+/** Client total for display — uses line items when loaded, else stored itinerary total. */
+export function resolveClientTotal(
+  itin: Pick<Itinerary, "days" | "markupMargin" | "taxRate" | "discountRate" | "totalPrice">,
+): number {
+  const fromItems = computeItineraryTotalPrice(itin);
+  if (fromItems > 0) return fromItems;
+  const stored = Number(itin.totalPrice || 0);
+  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+}
+
+/** Markup % needed to reach a client total (tax % held constant). */
+export function markupForTargetTotal(
+  itemsSubtotal: number,
+  taxRate: number,
+  targetTotal: number,
+  discountRate = 0,
+): number {
+  if (itemsSubtotal <= 0 || targetTotal <= 0) return 0;
+  const afterDiscount = itemsSubtotal * (1 - clampPercent(Number(discountRate || 0)) / 100);
+  if (afterDiscount <= 0) return 0;
+  const taxMult = 1 + Number(taxRate || 0) / 100;
+  const preTax = targetTotal / taxMult;
+  return Number(((preTax / afterDiscount - 1) * 100).toFixed(2));
 }
 
 export function mapItemFromApi(item: ApiItineraryItem): ItineraryItem {
@@ -175,7 +261,8 @@ export function mapItineraryFromApi(
     taxRate: Number(full.tax_rate),
     isTemplate: full.is_template,
     days,
-    proposalTheme: extras?.proposalTheme ?? "luxury",
+    proposalTheme: extras?.proposalTheme ?? "classic",
+    discountRate: extras?.discountRate ?? 0,
   };
 }
 

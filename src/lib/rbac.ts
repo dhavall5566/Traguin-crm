@@ -49,6 +49,7 @@ export const RBAC_NAV_MODULE: Record<string, RbacModuleKey> = {
   '/dashboard/settings/email-setup': 'workspace_settings',
   '/dashboard/settings/smtp': 'workspace_settings',
   '/dashboard/settings/email': 'workspace_settings',
+  '/dashboard/settings/whatsapp': 'workspace_settings',
 };
 
 /** Sidebar label → module key used for MENU visibility only (inherits from CRM matrix row). */
@@ -178,6 +179,10 @@ export function duplicateRolePermissions(src: RoleDefinition): Record<RbacModule
 /** Default matrix for manually created roles (deny-all until tuned). */
 export function permissionsAllDenied(): Record<RbacModuleKey, RbacCrudSet> {
   return emptyDeny();
+}
+
+export function isAgencyAdmin(roleName: string): boolean {
+  return roleName === 'Agency Admin';
 }
 
 export function canManageRoleDefinitions(

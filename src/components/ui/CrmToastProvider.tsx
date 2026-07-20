@@ -8,10 +8,10 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { BellRing, CheckCircle2, AlertCircle, Info, UserPlus } from 'lucide-react';
+import { BellRing, CheckCircle2, AlertCircle, Info, UserPlus, Trash2 } from 'lucide-react';
 import { registerCrmToastBus, type CrmToastBusPayload } from '@/lib/crm-toast-bus';
 
-export type CrmToastVariant = 'success' | 'error' | 'info' | 'lead';
+export type CrmToastVariant = 'success' | 'error' | 'info' | 'lead' | 'confirm';
 
 type CrmToastItem = {
   id: string;
@@ -20,6 +20,7 @@ type CrmToastItem = {
   leadKind?: 'new' | 'returning';
   exiting?: boolean;
   onAction?: () => void;
+  actionLabel?: string;
 };
 
 type ShowToastOptions = {
@@ -61,6 +62,7 @@ function ToastIcon({
     );
   }
   if (variant === 'error') return <AlertCircle className={className} aria-hidden />;
+  if (variant === 'confirm') return <Trash2 className={className} aria-hidden />;
   if (variant === 'info') return <Info className={className} aria-hidden />;
   return <CheckCircle2 className={className} aria-hidden />;
 }
@@ -127,13 +129,19 @@ export function CrmToastProvider({ children }: { children: React.ReactNode }) {
             variant: 'lead',
             leadKind: payload.leadKind,
             onAction: payload.onAction,
+            actionLabel: payload.actionLabel,
           },
           payload.durationMs ?? (payload.leadKind === 'new' ? 5200 : 4600),
         );
         return;
       }
       pushToast(
-        { message: payload.message, variant, onAction: payload.onAction },
+        {
+          message: payload.message,
+          variant,
+          onAction: payload.onAction,
+          actionLabel: payload.actionLabel,
+        },
         payload.durationMs ?? DEFAULT_DURATION_MS,
       );
     };
@@ -182,7 +190,7 @@ export function CrmToastProvider({ children }: { children: React.ReactNode }) {
                   <ToastIcon variant={toast.variant} leadKind={toast.leadKind} />
                 </div>
                 <span className="crm-toast__message">{toast.message}</span>
-                <span className="crm-toast__action">View</span>
+                <span className="crm-toast__action">{toast.actionLabel ?? 'View'}</span>
               </button>
             ) : (
               <div className="crm-toast__inner">
